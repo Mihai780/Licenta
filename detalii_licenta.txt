@@ -1,0 +1,16 @@
+Image captioning nu are nevoie doar sa intelegi obiectul ci sa intelegi si relatia dintre obiecte si abilitatea de a da compress informatie vizuala complexa intr-un limbaj descriptiv concis
+Se foloseste VGG Arhitecture care are 11-19 layere depinde ce fel de VGG
+fully connected layers ( dense layers ) ei se uita la ce au facut convolutions + pooling si invata combinatii globale, ele au greutatii unice si pot sa vada tot vector de input si sunt acele layere unde fiecare input feature este conectat la orice output neuron, sunt la final
+Soft-max se foloseste la imagini deoarece incurajeaza "winner-takes-all" si ofera probabilitati la fiecare activare de ouput neuron iar probabilitatea ca inputul sa apartina clasei i
+max pooling este o operatie de a scadea dimensiunea feature map-ului care vine din convolution layers pastrand informatia cea mai importanta
+feature maps este outputul dupa ce am aplicat un singur convolutional layer
+Experimentul de flatten, adica sa transformi dintr-o dimensiune XD in 1D este pentru a fi folosit mai bine de catre fully connecter layers care sunt de forma y = f(Wx+b) iar x este de 1D input 
+In general daca avem o imagine si incercam sa o comprimam intr-o singura descriere ajungem sa pierdem foarte multe informatii, asta se intampla cand luam o imagine si o bagam printr-un covnet adanc si folosim the very top layer feature( primim o reprezentare compacta si foarte distilata, aruncand chestii minore care ne-ar fi putut ajuta sa facem descrieri mai bune. Sistemul vizual omenesc rezolva asta folosind atentia. Noi oamenii in loc sa ne folosim de o imagine fixata a tuturor detaliilor , ochii si creierul nostru se misca constant prin imagine ( de exemplu daca e imaginea unei strazi, se uita la masina, la persoana care da din mana, la un semn), focusandu-se pe ce e cel mai important la un moment dat.Pe scurt atentia este un splotlight care se plimba prin imagine, aducand regiuni diferite la un high-resulation view.
+Noi de asta eliminam ultimul fully conected layer, ca sa pastram cat mai multa informatie si sa nu eliminam informatiile care poate sunt mai putin importante dar sunt importante pentru a face descrierea mai exacta ( de ex stim ca in imagine este o masina, dar unde este masina, ce culoare are masina?) 
+Se uita in imagine peste tot si vede care parte are cel mai mult sens cu ce s-a vorbit pana acuma ( asta se face prin a se oferii un scor la fiecare portiune din imagine si apoi se ia cel cu scorul cel mai mare -se foloseste softmax)
+
+Encoderul:
+Extrage 512 14x14 feature maps, le da flatt la o matrice de 512 x 196 , o sa se uite peste acest feature map si o sa extraga ce este important pentru LSTM la decoder la fiecare pas de generare a descrierii imaginii.
+In cod inghetam weights, scapam de ultimele 2 layere ( acel FC si pool) adaugam un nou pool de dimensiunea 14x14. Forward ia o imagine, o transforma intr-un batch de B,C,H,W si apoi o modifca in 14x14. La parametrii dam freeze la toate weights mai putin la ultiemel 3 daca e cazul, de ce, primele layere au fost oricum preantrenate foarte bine si nu vrem sa le deranjam cu date noi si facem doar la ultimele epntur ca ele fac treaba cea mai grea si sunt mai task-specific
+
+
