@@ -1,4 +1,5 @@
 Image captioning nu are nevoie doar sa intelegi obiectul ci sa intelegi si relatia dintre obiecte si abilitatea de a da compress informatie vizuala complexa intr-un limbaj descriptiv concis
+Encoder si Decoder model cum functioneaza:
 Se foloseste VGG Arhitecture care are 11-19 layere depinde ce fel de VGG
 fully connected layers ( dense layers ) ei se uita la ce au facut convolutions + pooling si invata combinatii globale, ele au greutatii unice si pot sa vada tot vector de input si sunt acele layere unde fiecare input feature este conectat la orice output neuron, sunt la final
 Soft-max se foloseste la imagini deoarece incurajeaza "winner-takes-all" si ofera probabilitati la fiecare activare de ouput neuron iar probabilitatea ca inputul sa apartina clasei i
@@ -8,9 +9,21 @@ Experimentul de flatten, adica sa transformi dintr-o dimensiune XD in 1D este pe
 In general daca avem o imagine si incercam sa o comprimam intr-o singura descriere ajungem sa pierdem foarte multe informatii, asta se intampla cand luam o imagine si o bagam printr-un covnet adanc si folosim the very top layer feature( primim o reprezentare compacta si foarte distilata, aruncand chestii minore care ne-ar fi putut ajuta sa facem descrieri mai bune. Sistemul vizual omenesc rezolva asta folosind atentia. Noi oamenii in loc sa ne folosim de o imagine fixata a tuturor detaliilor , ochii si creierul nostru se misca constant prin imagine ( de exemplu daca e imaginea unei strazi, se uita la masina, la persoana care da din mana, la un semn), focusandu-se pe ce e cel mai important la un moment dat.Pe scurt atentia este un splotlight care se plimba prin imagine, aducand regiuni diferite la un high-resulation view.
 Noi de asta eliminam ultimul fully conected layer, ca sa pastram cat mai multa informatie si sa nu eliminam informatiile care poate sunt mai putin importante dar sunt importante pentru a face descrierea mai exacta ( de ex stim ca in imagine este o masina, dar unde este masina, ce culoare are masina?) 
 Se uita in imagine peste tot si vede care parte are cel mai mult sens cu ce s-a vorbit pana acuma ( asta se face prin a se oferii un scor la fiecare portiune din imagine si apoi se ia cel cu scorul cel mai mare -se foloseste softmax)
+Sunt 2 tipuri de attention , pot sa fie soft si hard. Datorita captioning model care foloseste mecanismul de atentie, noi putem sa vedem exact unde se uita generand noul cuvant. Modelul cand produce o propozite,  dam overlay la attention weight ca un heatmap pe imagine pentru fiecare cuvant. Cnad e la un cuvant il arata in alb.Aceasta vizualizare este imposibila daca 
 
+Diferenta dintre soft si hard este ca soft attention este mai practica, mai usor de antrenat si are o performanta puternica, hard attention este mai apropiata de ideea de a iti sarii privirea spre un anumit spot si poate sa aiba alegeri mai umane si mai exacte, dar cu un cost complex de antrenare mai mare.
+
+Encoded_captions e efectiv un dictionar al cuvintelor care apar in dataset si in functie de cat de des apar, descrescator, primesc un token care este ID-ul pentru fiecare cuvant
+ 
 Encoderul:
 Extrage 512 14x14 feature maps, le da flatt la o matrice de 512 x 196 , o sa se uite peste acest feature map si o sa extraga ce este important pentru LSTM la decoder la fiecare pas de generare a descrierii imaginii.
 In cod inghetam weights, scapam de ultimele 2 layere ( acel FC si pool) adaugam un nou pool de dimensiunea 14x14. Forward ia o imagine, o transforma intr-un batch de B,C,H,W si apoi o modifca in 14x14. La parametrii dam freeze la toate weights mai putin la ultiemel 3 daca e cazul, de ce, primele layere au fost oricum preantrenate foarte bine si nu vrem sa le deranjam cu date noi si facem doar la ultimele epntur ca ele fac treaba cea mai grea si sunt mai task-specific
+
+Attention model:
+Cum se calculeaza atentia pentru fiecare regiune: se calculeaza scorul folosind vectorul ala de 196 de elemente si elementul gasit anterior, se aduc amandoi la un plan comun,le adunam (asta ne arata cat de bine se potriveste regiunea i cu ce vr acum decoderul), folosim un RELU (adaugand nonlinearitate asa ca modelul poate sa invete functii mai complexe) si apoi ne trebuie un vectot de dimensiune dar facem inmulirea cu transpusa si asa ajungem la o singura valoare, apoi le transformam intr-o distributie de probabilitati folosind softmax si apoi facem context vectorul. Salvam the context vector intrucat arata partile unde s-a uitat in imagine la acel pas de decodare si alfa care ne ajuta sa vedem unde s-a uitat in imagine, acea portiune iluminata din imagine.
+
+Decoder:
+Avem nebunia aia de desen iar zt este context vector calculat de attention, E yt-1 este cuvantul ales ultimul care este luat din matricea E care e embedded, ct-1 este cell state-ul, adica memoria iar ht-1 este hidden state adica ce tine minte LSTM-ul ca a generat pana acuma). Avem forget gate care decide cat de mult din ct-1 sa pastram, input gate controleaza cata informatie noua sa fie scrisa in cell, input moderator propune un content nou de memoria bazandu-se pe aceleasi inputuri. La initial weights, pune bias la 0 sa nu aiba vreo preferinta pentru un cuvant,trb sa fie initializati random ca sa aiba identitate proprie ca sa invete featurile diferite altfel in timpul la backpropagation ar primii aceiasi gradients si ar sta identici pentru totdeauna si sunt valori mici ca sa evitam exploding/vanishing gradients
+
 
 
