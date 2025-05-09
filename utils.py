@@ -2,14 +2,12 @@ import os
 import json
 import h5py
 import numpy as np
+import torch
 from tqdm import tqdm
 from random import seed, choice, sample
 import imageio
 from PIL import Image
 from collections import Counter,defaultdict
-
-
-from itertools import islice
 
 def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_freq, output_dir, max_length=100):
     """
@@ -140,7 +138,44 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
             with open(lens_path, 'w') as f:
                 json.dump(lengths, f)
 
+def random_weights(tensor):
+    """
+    Populate the tensor with values sampled uniformly from [-limit, limit]
+    where limit = sqrt(1 / hidden_size).
+    tensor: torch tensor to initialize
+    """
+    hidden_size = tensor.size(1)
+    limit = np.sqrt(1.0 / hidden_size)
+    with torch.no_grad():
+        tensor.uniform_(-limit, limit)
 
+
+def build_embedding_matrix(embeddings_path, index_map):
+    """
+    Constructs an embedding matrix for tokens in index_map from a GloVe-formatted file.
+
+    embeddings_path: path to GloVe file
+    index_map: mapping from token string to row index in output matrix
+    Returns: (matrix of shape (vocab_size, dim), embedding dimension)
+    """
+    # Determine dimension by inspecting the first line
+    with open(embeddings_path, 'r', encoding='utf-8') as f:
+        embedding_dim = len(f.readline().strip().split())-1
+
+    vocab_size = len(index_map)
+    emb_matrix = torch.FloatTensor(vocab_size, embedding_dim)
+    random_weights(emb_matrix)
+
+    print("Loading pre-trained embeddings...")
+    with open(embeddings_path, 'r', encoding='utf-8') as f:
+        for entry in f:
+            parts = entry.strip().split()
+            token = parts[0]
+            if token in index_map:
+                vec = torch.tensor([float(x) for x in parts[1:]], dtype=torch.float)
+                emb_matrix[index_map[token]] = vec
+
+    return emb_matrix, embedding_dim
 
 
 
