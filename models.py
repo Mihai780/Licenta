@@ -4,18 +4,15 @@ from torch import nn
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class EEncoderEfficientNetB4(nn.Module):
+class Encoder(nn.Module):
     def __init__(self, image_feature_size=14):
         super().__init__()
-        self.image_feature_size = image_feature_size
-
         effnet = timm.create_model('efficientnet_b4', pretrained=True)
-
         self.effnet = nn.Sequential(*list(effnet.children())[:-2])
 
         self.feature_dim = effnet.num_features
         self.pool = nn.AdaptiveAvgPool2d((image_feature_size, image_feature_size))
-        self.finetune(enabled=False)
+        self.fine_tune(trainable=False)
 
     def forward(self, x):
         out = self.effnet(x)
@@ -23,7 +20,7 @@ class EEncoderEfficientNetB4(nn.Module):
         out = out.permute(0, 2, 3, 1)
         return out
 
-    def finetune(self, trainable=True):
+    def fine_tune(self, trainable=True):
         for param in self.effnet.parameters():
             param.requires_grad = False
 
@@ -65,12 +62,13 @@ class DecoderWithAttention(nn.Module):
         super(DecoderWithAttention, self).__init__()
         """
         attention_dim: size of attention network
-        embed_dim: embedding size
+        embedding_dim: embedding size
         decoder_dim: size of decoder's RNN
         vocab_size: size of vocabulary
         encoder_dim: feature size of encoded images
         dropout: dropout
         """
+        
         self.vocab_size=vocab_size
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim)
         self.embedding = nn.Embedding(vocab_size, embedding_dim) 
