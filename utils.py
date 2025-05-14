@@ -191,15 +191,15 @@ def build_embedding_matrix(embeddings_path, index_map):
     return emb_matrix, embedding_dim
 
 
-def save_checkpoint(data_name,current_epoch,epochs_no_improve,encoder,decoder,enc_optimiser,dec_optimiser,bleu4,is_best):
+def save_checkpoint(data_name, current_epoch, epochs_no_improve,encoder, decoder, enc_optimiser, dec_optimiser,bleu4, is_best):
     """
-    Encapsulates everything we need to persist our training state at the end of an epoch, so we can resume later or roll back to our best-performing model.
-    data_name: identifier for this dataset
-    current_epoch: current epoch index
-    epochs_no_improve: epochs since last BLEU-4 improvement
-    bleu_score: validation BLEU-4 score
-    is_best: shows if the current checkpoint is the best that has been or not
+    Encapsulates everything we need to persist our training state at the end of an epoch,
+    so we can resume later or roll back to our best-performing model.
     """
+    # Target directory
+    ckpt_dir = "/home/mihai/workspace/Licenta/Informatii/Checkpoints"
+    os.makedirs(ckpt_dir, exist_ok=True)
+
     # Assemble checkpoint dictionary
     checkpoint_data = {
         'epoch': current_epoch,
@@ -210,13 +210,16 @@ def save_checkpoint(data_name,current_epoch,epochs_no_improve,encoder,decoder,en
         'encoder_optimizer': enc_optimiser,
         'decoder_optimizer': dec_optimiser,
     }
-    base_filename = f"checkpoint_{data_name}.pth.tar"
-    torch.save(checkpoint_data, base_filename)
 
-    #If it is the best, we have to store it to not lose it
+    # Base filename
+    base_name = f"checkpoint_{data_name}.pth.tar"
+    ckpt_path = os.path.join(ckpt_dir, base_name)
+    torch.save(checkpoint_data, ckpt_path)
+
+    # If it's the best, also save a copy prefixed with BEST_
     if is_best:
-        best_filename = f"BEST_{base_filename}"
-        torch.save(checkpoint_data, best_filename)
+        best_path = os.path.join(ckpt_dir, f"BEST_{base_name}")
+        torch.save(checkpoint_data, best_path)
 
 def clip_gradient(optimizer, grad_clip):
     """

@@ -257,14 +257,19 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,
             # gather references
             all_captions = all_captions.to(device)
             sorted_all_caps = all_captions[sort_idx]
-            for caps_set in sorted_all_caps:
-                cand = [w for w in caps_set.tolist() if w not in {word_to_idx['<start>'], word_to_idx['<pad>']}]
-                references.append([cand])
-
-            # gather hypotheses
             _, pred_idxs = torch.max(raw_scores, dim=2)
-            for idx, length in enumerate(decode_lens):
-                hypotheses.append(pred_idxs[idx, :length].tolist())
+
+            for img_idx in range(len(decode_lens)):
+                caps_for_img = sorted_all_caps[img_idx]
+                refs = []
+                for ref_tensor in caps_for_img:
+                    tokens = [w for w in ref_tensor.tolist()
+                            if w not in {word_to_idx['<start>'], word_to_idx['<pad>']}]
+                    refs.append(tokens)
+                references.append(refs)
+                
+                hyp_tokens = pred_idxs[img_idx, :decode_lens[img_idx]].tolist()
+                hypotheses.append(hyp_tokens)
 
     # compute BLEU-4
     bleu4 = corpus_bleu(references, hypotheses)

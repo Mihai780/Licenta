@@ -1,13 +1,12 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-import json
 import torchvision.transforms as T
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import skimage.transform as skt
-import argparse
-from scipy.misc import imread as load_image, imresize as resize_image
+import imageio
+from skimage.transform import resize as resize_image
 from PIL import Image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,10 +21,10 @@ def beam_search_captioning(cnn_encoder, lstm_decoder, img_path, mapping, beam_sz
     vocab_size = len(mapping)
 
     # Load & preprocess image
-    raw = load_image(img_path)
+    raw = imageio.imread(img_path)
     if raw.ndim == 2:
         raw = np.stack([raw]*3, axis=2)
-    raw = resize_image(raw, (256, 256))
+    raw = resize_image(raw, (256, 256), preserve_range=True).astype(np.uint8)
     raw = raw.transpose(2, 0, 1) / 255.0
     img_tensor = torch.FloatTensor(raw).to(device)
     norm = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -49,18 +48,18 @@ def beam_search_captioning(cnn_encoder, lstm_decoder, img_path, mapping, beam_sz
     completed_alphas = []
     completed_scores = []
 
-    h, c = lstm_decoder.init_hidden_state(feats)
+    h, c = lstm_decoder.initial_states(feats)
     step = 0
 
     while True:
         emb = lstm_decoder.embedding(beams[:, -1]).squeeze(1)
         context, alpha = lstm_decoder.attention(feats, h)
         alpha_maps = alpha.view(-1, H, W)
-        gate = torch.sigmoid(lstm_decoder.f_beta(h))
+        gate = torch.sigmoid(lstm_decoder.beta_gate(h))
         attended = gate * context
 
         h, c = lstm_decoder.decode_step(torch.cat([emb, attended], dim=1), (h, c))
-        logits = lstm_decoder.fc(h)
+        logits = lstm_decoder.fcl(h)
         log_probs = F.log_softmax(logits, dim=1)
 
         scores = beam_scores.expand_as(log_probs) + log_probs
@@ -80,7 +79,7 @@ def beam_search_captioning(cnn_encoder, lstm_decoder, img_path, mapping, beam_sz
         if mask_end.any():
             for idx in mask_end.nonzero(as_tuple=False).flatten():
                 completed_seqs.append(new_beams[idx].tolist())
-                completed_alphas.append(new_alphas[idx].cpu().numpy())
+                completed_alphas.append(new_alphas[idx].detach().cpu().numpy())
                 completed_scores.append(top_scores[idx])
             k -= mask_end.sum().item()
 
@@ -104,13 +103,15 @@ def plot_attention(img_path, seq_indices, alpha_maps, idx_to_word, smooth=True):
     """
     Overlay attention maps for each generated word on the image.
     """
+    H, W = alpha_maps.shape[1], alpha_maps.shape[2]
     img = Image.open(img_path).resize((H*24, W*24), Image.LANCZOS)
     words = [idx_to_word[i] for i in seq_indices]
 
+    n_rows = int(np.ceil(len(words) / 5.0))
     for t, word in enumerate(words):
         if t >= 50:
             break
-        plt.subplot(np.ceil(len(words)/5.), 5, t+1)
+        plt.subplot(n_rows, 5, t + 1)
         plt.text(0, 1, word, color='black', backgroundcolor='white')
         plt.imshow(img)
         alpha = alpha_maps[t]
@@ -123,32 +124,3 @@ def plot_attention(img_path, seq_indices, alpha_maps, idx_to_word, smooth=True):
         plt.axis('off')
     plt.show()
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Generarea automată de descrieri pentru imagini folosind modele de deep learning')
-
-    parser.add_argument('--img', '-i', required=True)
-    parser.add_argument('--checkpoint', '-c', required=True)
-    parser.add_argument('--map', '-m', required=True)
-    parser.add_argument('--beam_size', '-b', type=int, default=5)
-    parser.add_argument('--nosmooth', action='store_true')
-    args = parser.parse_args()
-
-    # Load models
-    cp = torch.load(args.checkpoint, map_location=device)
-    enc = cp['encoder'].to(device).eval()
-    dec = cp['decoder'].to(device).eval()
-
-    # Load mapping
-    with open(args.map, 'r') as f:
-        mapping = json.load(f)
-    rev_map = {v:k for k, v in mapping.items()}
-
-    # Generate
-    indices, alphas = beam_search_captioning(enc, dec, args.img, mapping, beam_sz=args.beam_size)
-    alphas_tensor = torch.FloatTensor(alphas)
-
-    # Plot
-    H = alphas_tensor.size(1)
-    W = alphas_tensor.size(2)
-    plot_attention(args.img, indices, alphas_tensor.numpy(), rev_map, smooth=not args.nosmooth)
