@@ -30,9 +30,9 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
     captions = {'train': [], 'val': [], 'test': []}
     word_freq = Counter()
 
+    caption_map = defaultdict(list)
     if dataset_name == 'flickr8k':
         # Read all captions
-        caption_map = defaultdict(list)
         with open(split_spec, 'r') as cfile:
             for line in cfile:
                 img_fn, caption = line.strip().split(',', 1)
@@ -40,53 +40,41 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
                 if tokens and len(tokens) <= max_length:
                     caption_map[img_fn].append(tokens)
                     word_freq.update(tokens)
-
-        # Create a reproducible 60/20/20 split
-        seed(28)
-        img_fns = list(caption_map.keys())
-        shuffle(img_fns)
-        total = len(img_fns)
-        train_end = int(0.6 * total)
-        val_end = int(0.8 * total)
-
-        split_map = {}
-        for idx, fn in enumerate(img_fns):
-            if idx < train_end:
-                split_map[fn] = 'train'
-            elif idx < val_end:
-                split_map[fn] = 'val'
-            else:
-                split_map[fn] = 'test'
-
-        # Assign images and captions to splits
-        for img_fn, token_lists in caption_map.items():
-            split = split_map[img_fn]
-            img_path = os.path.join(image_dir, img_fn)
-            paths[split].append(img_path)
-            captions[split].append(token_lists)
-
     else:
-        # Load Karpathy JSON
-        with open(split_spec, 'r') as jf:
-            data = json.load(jf)
-        for img in data['images']:
-            token_lists = [s['tokens'] for s in img['sentences'] if 1 <= len(s['tokens']) <= max_length]
-            if not token_lists:
-                continue
-            # update frequency
-            for toks in token_lists:
-                word_freq.update(toks)
-            # file path
-            if dataset_name == 'coco':
-                img_path = os.path.join(image_dir, img['filepath'], img['filename'])
-            else:  # flickr30k
-                img_path = os.path.join(image_dir, img['filename'])
-            # split key normalization
-            split = img['split']
-            if split in {'restval', 'train'}:
-                split = 'train'
-            captions[split].append(token_lists)
-            paths[split].append(img_path)
+        if dataset_name == 'flickr30k':
+            with open(split_spec, 'r') as f:
+                for line in f:
+                    key, caption = line.strip().split('\t', 1)
+                    img_fn = key.split('#')[0]
+                    tokens = caption.strip().rstrip('.').lower().split()
+                    if tokens and len(tokens) <= max_length:
+                        caption_map[img_fn].append(tokens)
+                        word_freq.update(tokens)
+        else:
+            print(3)
+    
+    # 3) 60/20/20 reproducible split
+    seed(28)
+    img_fns = list(caption_map.keys())
+    shuffle(img_fns)
+    total = len(img_fns)
+    train_end = int(0.6 * total)
+    val_end = int(0.8 * total)
+
+    split_map = {}
+    for idx, img_fn in enumerate(img_fns):
+        if idx < train_end:
+            split_map[img_fn] = 'train'
+        elif idx < val_end:
+            split_map[img_fn] = 'val'
+        else:
+            split_map[img_fn] = 'test'
+
+    for img_fn, token_lists in caption_map.items():
+        split = split_map[img_fn]
+        img_path = os.path.join(image_dir, img_fn)
+        paths[split].append(img_path)
+        captions[split].append(token_lists)    
 
     # Sanity checks
     for split in ['train', 'val', 'test']:
@@ -197,7 +185,7 @@ def save_checkpoint(data_name, current_epoch, epochs_no_improve,encoder, decoder
     so we can resume later or roll back to our best-performing model.
     """
     # Target directory
-    ckpt_dir = "/home/mihai/workspace/Licenta/Informatii/Checkpoints"
+    ckpt_dir = "/home/mihai/workspace/output_data/Checkpoints/"
     os.makedirs(ckpt_dir, exist_ok=True)
 
     # Assemble checkpoint dictionary

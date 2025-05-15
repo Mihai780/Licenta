@@ -1,15 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import torch, json
-import numpy as np
-import imageio
-from skimage.transform import resize as resize_image
-from PIL import Image
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import torch.nn.functional as F
-import torchvision.transforms as T
-
 from single_image import plot_attention, beam_search_captioning
 
 # Set up device
@@ -28,22 +19,22 @@ class CaptionGUI:
         self.beam_size = tk.StringVar(value="5")
         self.smooth = tk.BooleanVar(value=True)
 
-        # Row 0: Image
+        # Image:
         tk.Label(root, text="Image:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         tk.Entry(root, textvariable=self.image_path, width=50).grid(row=0, column=1, padx=5, pady=5)
         tk.Button(root, text="Browse", command=self._browse_image).grid(row=0, column=2, padx=5)
 
-        # Row 1: Checkpoint
+        # Checkpoint:
         tk.Label(root, text="Checkpoint:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         tk.Entry(root, textvariable=self.checkpoint_path, width=50).grid(row=1, column=1, padx=5, pady=5)
         tk.Button(root, text="Browse", command=self._browse_checkpoint).grid(row=1, column=2, padx=5)
 
-        # Row 2: WordMap
+        # WordMap:
         tk.Label(root, text="WordMap JSON:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
         tk.Entry(root, textvariable=self.map_path, width=50).grid(row=2, column=1, padx=5, pady=5)
         tk.Button(root, text="Browse", command=self._browse_map).grid(row=2, column=2, padx=5)
 
-        # Row 3: Beam size & Smooth checkbox
+        # Beam size & Smooth checkbox:
         tk.Label(root, text="Beam size:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
         tk.Entry(root, textvariable=self.beam_size, width=5).grid(row=3, column=1, sticky="w", padx=5, pady=5)
         tk.Checkbutton(root,
@@ -53,7 +44,7 @@ class CaptionGUI:
                        offvalue=False
                        ).grid(row=3, column=2, padx=5, pady=5)
 
-        # Row 4: Generate button
+        # Generate button:
         tk.Button(root,
                   text="Generate Caption",
                   command=self._generate_caption,

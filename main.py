@@ -12,11 +12,12 @@ from datasets import ImageCaptionDataset
 from utils import clip_gradient, save_checkpoint, AverageMeter
 from nltk.translate.bleu_score import corpus_bleu
 
-data_folder = '/home/mihai/workspace/output_data/Flickr8k'
-data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
+# data_folder = '/home/mihai/workspace/output_data/Flickr8k'
+# data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
 
-# data_folder = '/home/mihai/workspace/output_data/Flickr30k'
-# data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
+data_folder = '/home/mihai/workspace/output_data/Flickr30k'
+data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
+
 # data_folder = '/home/mihai/workspace/output_data/COCO'
 # data_name = 'coco_5_cap_per_img_5_min_word_freq'  
 
@@ -40,7 +41,8 @@ log_interval = 100
 num_workers = 8
 enc_lr = 1e-4
 dec_lr = 4e-4
-resume_ckpt = None
+# resume_ckpt = None
+resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
 fine_tune_enc = False
 
 def main():
@@ -67,7 +69,7 @@ def main():
         enc_optimizer = optim.Adam(filter(lambda p: p.requires_grad, encoder.parameters()), lr=enc_lr) if fine_tune_enc else None
         dec_optimizer = optim.Adam(filter(lambda p: p.requires_grad, decoder.parameters()), lr=dec_lr)
     else:
-        checkpoint = torch.load(resume_ckpt)
+        checkpoint = torch.load(resume_ckpt,map_location=device,weights_only=False)
         initial_epoch = checkpoint['epoch'] + 1
         epochs_no_improve = checkpoint['epochs_since_improvement']
         best_bleu_score = checkpoint['bleu-4']
@@ -89,11 +91,11 @@ def main():
     normalize = transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
     train_loader = data.DataLoader(
         ImageCaptionDataset(data_folder, data_name, 'TRAIN', transforms.Compose([normalize])),
-        batch_size=batch_sz, shuffle=True, num_workers=num_workers, pin_memory=True
+        batch_size=batch_sz, shuffle=True, num_workers=num_workers, pin_memory=False
     )
     val_loader = data.DataLoader(
         ImageCaptionDataset(data_folder, data_name, 'VAL', transforms.Compose([normalize])),
-        batch_size=batch_sz, shuffle=False, num_workers=num_workers, pin_memory=True
+        batch_size=batch_sz, shuffle=False, num_workers=num_workers, pin_memory=False
     )
 
     # Epoch loop
