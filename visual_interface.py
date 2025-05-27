@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import torch, json
 from single_image import plot_attention, beam_search_captioning
+import os
 
 # Set up device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -52,22 +53,29 @@ class CaptionGUI:
                   ).grid(row=4, column=1, pady=10)
 
     def _browse_image(self):
-        p = filedialog.askopenfilename(title="Select an image",
-                                       filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp"),
-                                                  ("All files", "*.*")])
+        p = filedialog.askopenfilename(
+            title="Select an image",
+            initialdir=os.path.expanduser("/home/mihai/workspace/Licenta/Informatii/Img/"),
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp"), ("All files", "*.*")]
+        )
         if p:
             self.image_path.set(p)
 
     def _browse_checkpoint(self):
-        p = filedialog.askopenfilename(title="Select checkpoint (.pth.tar)",
-                                       filetypes=[("PyTorch checkpoint", "*.pth.tar"),
-                                                  ("All files", "*.*")])
+        p = filedialog.askopenfilename(
+            title="Select checkpoint (.pth.tar)",
+            initialdir=os.path.expanduser("/home/mihai/workspace/output_data/Checkpoints/"),
+            filetypes=[("PyTorch checkpoint", "*.pth.tar"), ("All files", "*.*")]
+        )
         if p:
             self.checkpoint_path.set(p)
 
     def _browse_map(self):
-        p = filedialog.askopenfilename(title="Select WORDMAP JSON",
-                                       filetypes=[("JSON", "*.json"), ("All files", "*.*")])
+        p = filedialog.askopenfilename(
+            title="Select WORDMAP JSON",
+            initialdir=os.path.expanduser("/home/mihai/workspace/output_data/"),
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")]
+        )
         if p:
             self.map_path.set(p)
 

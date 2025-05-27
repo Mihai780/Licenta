@@ -37,9 +37,9 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
             for line in cfile:
                 img_fn, caption = line.strip().split(',', 1)
                 tokens = caption.strip().rstrip('.').lower().split()
+                word_freq.update(tokens)
                 if tokens and len(tokens) <= max_length:
                     caption_map[img_fn].append(tokens)
-                    word_freq.update(tokens)
     else:
         if dataset_name == 'flickr30k':
             with open(split_spec, 'r') as f:
@@ -47,19 +47,19 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
                     key, caption = line.strip().split('\t', 1)
                     img_fn = key.split('#')[0]
                     tokens = caption.strip().rstrip('.').lower().split()
+                    word_freq.update(tokens)
                     if tokens and len(tokens) <= max_length:
                         caption_map[img_fn].append(tokens)
-                        word_freq.update(tokens)
         else:
             print(3)
     
-    # 3) 60/20/20 reproducible split
+    # 3) 80/10/10 reproducible split
     seed(28)
     img_fns = list(caption_map.keys())
     shuffle(img_fns)
     total = len(img_fns)
-    train_end = int(0.6 * total)
-    val_end = int(0.8 * total)
+    train_end = int(0.8 * total)
+    val_end = int(0.9 * total)
 
     split_map = {}
     for idx, img_fn in enumerate(img_fns):
@@ -256,5 +256,5 @@ class AverageMeter:
         batch = ground_truth.size(0)
         _, top_indices = output_scores.topk(top_k, dim=1, largest=True, sorted=True)
         matches = top_indices.eq(ground_truth.view(-1, 1).expand_as(top_indices))
-        correct = matches.float().sum().item()
-        return 100.0 * (correct / batch)
+        correct_total = matches.float().sum().item()
+        return 100.0 * (correct_total / batch)

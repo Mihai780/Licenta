@@ -95,8 +95,8 @@ class DecoderWithAttention(nn.Module):
 
     def initial_states(self, encoder_forward_out):
         mean_encoder_out = encoder_forward_out.mean(dim=1)
-        h = self.initial_hidden_state(mean_encoder_out)
-        c = self.initial_cell_state(mean_encoder_out)
+        h = torch.tanh(self.initial_hidden_state(mean_encoder_out))
+        c = torch.tanh(self.initial_cell_state(mean_encoder_out))
         return h, c
 
     def forward(self, encoder_forward_out, encoded_captions, caption_lengths):
@@ -124,7 +124,7 @@ class DecoderWithAttention(nn.Module):
 
         embeddings = self.embedding(encoded_captions)
         h, c = self.initial_states(encoder_forward_out)
-
+        
         #we start with <start> so we need only n-1 steps
         decode_lengths = (caption_lengths - 1).tolist()
         output_scores = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(device)

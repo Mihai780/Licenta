@@ -1,32 +1,227 @@
-Image captioning nu are nevoie doar sa intelegi obiectul ci sa intelegi si relatia dintre obiecte si abilitatea de a da compress informatie vizuala complexa intr-un limbaj descriptiv concis
-Encoder si Decoder model cum functioneaza:
-Se foloseste VGG Arhitecture care are 11-19 layere depinde ce fel de VGG
-fully connected layers ( dense layers ) ei se uita la ce au facut convolutions + pooling si invata combinatii globale, ele au greutatii unice si pot sa vada tot vector de input si sunt acele layere unde fiecare input feature este conectat la orice output neuron, sunt la final
-Soft-max se foloseste la imagini deoarece incurajeaza "winner-takes-all" si ofera probabilitati la fiecare activare de ouput neuron iar probabilitatea ca inputul sa apartina clasei i
-max pooling este o operatie de a scadea dimensiunea feature map-ului care vine din convolution layers pastrand informatia cea mai importanta
-feature maps este outputul dupa ce am aplicat un singur convolutional layer
-Experimentul de flatten, adica sa transformi dintr-o dimensiune XD in 1D este pentru a fi folosit mai bine de catre fully connecter layers care sunt de forma y = f(Wx+b) iar x este de 1D input 
-In general daca avem o imagine si incercam sa o comprimam intr-o singura descriere ajungem sa pierdem foarte multe informatii, asta se intampla cand luam o imagine si o bagam printr-un covnet adanc si folosim the very top layer feature( primim o reprezentare compacta si foarte distilata, aruncand chestii minore care ne-ar fi putut ajuta sa facem descrieri mai bune. Sistemul vizual omenesc rezolva asta folosind atentia. Noi oamenii in loc sa ne folosim de o imagine fixata a tuturor detaliilor , ochii si creierul nostru se misca constant prin imagine ( de exemplu daca e imaginea unei strazi, se uita la masina, la persoana care da din mana, la un semn), focusandu-se pe ce e cel mai important la un moment dat.Pe scurt atentia este un splotlight care se plimba prin imagine, aducand regiuni diferite la un high-resulation view.
-Noi de asta eliminam ultimul fully conected layer, ca sa pastram cat mai multa informatie si sa nu eliminam informatiile care poate sunt mai putin importante dar sunt importante pentru a face descrierea mai exacta ( de ex stim ca in imagine este o masina, dar unde este masina, ce culoare are masina?) 
-Se uita in imagine peste tot si vede care parte are cel mai mult sens cu ce s-a vorbit pana acuma ( asta se face prin a se oferii un scor la fiecare portiune din imagine si apoi se ia cel cu scorul cel mai mare -se foloseste softmax)
-Sunt 2 tipuri de attention , pot sa fie soft si hard. Datorita captioning model care foloseste mecanismul de atentie, noi putem sa vedem exact unde se uita generand noul cuvant. Modelul cand produce o propozite,  dam overlay la attention weight ca un heatmap pe imagine pentru fiecare cuvant. Cnad e la un cuvant il arata in alb.Aceasta vizualizare este imposibila daca 
+Image captioning doesn’t just require recognizing individual objects — it requires understanding the relationships between them and the ability to compress a complex visual scene into a concise, descriptive sentence.
 
-Diferenta dintre soft si hard este ca soft attention este mai practica, mai usor de antrenat si are o performanta puternica, hard attention este mai apropiata de ideea de a iti sarii privirea spre un anumit spot si poate sa aiba alegeri mai umane si mai exacte, dar cu un cost complex de antrenare mai mare.
+Encoder (CNN)
+We use a VGG network (e.g. VGG-16 or VGG-19) up through its last convolutional layer, before any fully-connected layers. That convolutional output is a tensor of shape 512 × 14 × 14 (i.e. 512 feature maps, each 14×14). We treat each of the 14×14 = 196 spatial locations as an individual “annotation vector” of length 512.
 
-Encoded_captions e efectiv un dictionar al cuvintelor care apar in dataset si in functie de cat de des apar, descrescator, primesc un token care este ID-ul pentru fiecare cuvant
- 
+Why not use the fully-connected layers?
+Fully-connected (dense) layers sit at the very end of VGG. Each neuron there sees every activation from the previous layer and learns global combinations of features. If you squash all spatial information into one 4,096-dimensional (or 1,000-dimensional) vector, you lose where things appeared in the image. That hurts captioning, because “where” is often just as important as “what.” By dropping the FC layers, we preserve the full spatial feature map so our attention module can later choose which regions to focus on.
+
+Attention
+Think of attention as a moving spotlight over the image: at each word-generation step, the model assigns a score to each of the 196 locations, normalizes them with a softmax, and produces a weighted sum of the 512-dim vectors. This soft (deterministic) attention is easy to train end-to-end: you get a smooth probability distribution over all locations. There’s also a hard (stochastic) variant, where you sample a single location at each step (more like a human saccade), but that requires REINFORCE or another policy-gradient method and is trickier to optimize.
+
+Decoder (LSTM)
+At each time step, the LSTM takes three inputs:
+
+    The embedding of the previously generated word
+
+    Its previous hidden state
+
+    The attention-based context vector
+
+It then updates its cell and hidden states and outputs a probability distribution over the next word.
+
+Visualization of Attention
+During inference you can overlay the attention weights as a heatmap on the image—for each generated word, you see exactly where the model was “looking.” This visualization wouldn’t be possible if we’d collapsed everything into a single vector.
+
+Encoded Captions (Vocabulary Mapping)
+We build a vocabulary of all words in the dataset, sorted by frequency. Each word gets assigned a unique integer ID (token). This lets the decoder emit a sequence of IDs, which we then map back to words to form the final caption.
+
+
 Encoder:
 We chose EfficientNet-B4 as our encoder backbone because its pretrained filters capture rich, general visual patterns that “Show, Attend and Tell” relies on, then removed its classifier and global pool to expose spatial feature maps rather than class scores; by adaptively pooling to a 14×14 grid we mirror the paper’s 14×14 annotation vectors, ensuring a consistent number of attention “locations” regardless of input size, and by freezing all but the last three convolutional blocks we retain the low‐level, broadly useful features learned on ImageNet while still allowing the higher, more semantic layers to fine‐tune on our captioning task—exactly the balance of stability and adaptability the paper advocates for effective soft‐attention performance.
 We use a pretrained EfficientNet-B4 backbone (via timm.create_model('efficientnet_b4', pretrained=True)) with its final classifier and original pooling layers removed, leaving a convolutional trunk that outputs a tensor of shape (B, C, H′, W′) where C = effnet.num_features (1792 for B4); we then apply an AdaptiveAvgPool2d((14,14)) to produce a fixed 14×14 spatial grid, permute the result to (B, 14, 14, C), and reshape to (B, 196, C) so that each of the 196 vectors serves as an annotation for the decoder’s soft‐attention LSTM (as in “Show, Attend and Tell”); by default all backbone parameters are frozen (requires_grad=False), but calling finetune(True) unfreezes the last three convolutional blocks—locking in the well‐learned low‐level features while allowing higher‐level, more task‐specific features to adapt during training.
 
 Attention model:
-Cum se calculeaza atentia pentru fiecare regiune: se calculeaza scorul folosind vectorul ala de 196 de elemente si elementul gasit anterior, se aduc amandoi la un plan comun,le adunam (asta ne arata cat de bine se potriveste regiunea i cu ce vr acum decoderul), folosim un RELU (adaugand nonlinearitate asa ca modelul poate sa invete functii mai complexe) si apoi ne trebuie un vectot de dimensiune dar facem inmulirea cu transpusa si asa ajungem la o singura valoare, apoi le transformam intr-o distributie de probabilitati folosind softmax si apoi facem context vectorul. Salvam the context vector intrucat arata partile unde s-a uitat in imagine la acel pas de decodare si alfa care ne ajuta sa vedem unde s-a uitat in imagine, acea portiune iluminata din imagine.
+At each decoding step, we start with the encoder outputs, a set of 196 region vectors (one for each 14×14 spatial location) and the decoder’s previous hidden state. We need to score each region i by measuring how well it “fits” with what the decoder already knows.
+
+We first project both the 1792-dimensional region vectors and the 512-dimensional hidden state into a common “attention space.”
+Each 1792-dim region vector ai​ comes from the CNN and encodes local visual patterns (textures, shapes, colors) at spatial location i.
+The 512-dim hidden state ht−1 comes from the LSTM and encodes language context—what words have been generated so far, grammar, sentence structure.
+
+In code, that’s
+	att1 = encoder_att(encoder_out)        # (batch, 196, attention_dim)
+	att2 = decoder_att(decoder_hidden)     # (batch, attention_dim)
+By bringing them into the same space, we can directly compare a region ai​ with the decoder state ht−1.
+Our  whinitial hidden state and cell state is the average of all L annotations  which are then fed thorugh two separate MLP.
+The LSTM’s cell state ct​ is essentially the network’s “memory”—the part that can carry information forward over many time steps without it being immediately squashed by nonlinearities. It works together with the hidden state ht to control what information gets stored, forgotten, or exposed to the next layer.
+Why have a separate cell state?
+Unlike a vanilla RNN, an LSTM has explicit mechanisms (input, forget, and output gates) that decide:
+ What new information to add to the memory (via the input gate),
+ What old information to forget (via the forget gate), and
+ What part of the memory to expose as the hidden state (via the output gate).
+This structure helps the network learn long-range dependencies without suffering from vanishing or exploding gradients.
+What is the initial cell state c0?
+It’s simply the LSTM’s memory at time step 0, before any words have been generated. By initializing c0 based on the image (just like h0), you give the decoder a memory buffer that already “knows” the global content of the scene.
+Purpose in image captioning
+ Global context: c0 carries a distilled summary of the entire image into the decoder.
+ Long-term planning: As the LSTM generates a caption word by word, ct lets it remember high-level concepts (e.g., “there’s a dog,” “it’s on a beach”) even as it focuses attention on local regions for specific words.
+ Stable generation: Without a good initial c0​, the decoder would have to build its memory entirely from the first few words it generates, rather than from the visual evidence.
+        
+For each region i, we first measure compatibility by adding its projected vector a~i to the projected hidden state h~ and applying a ReLU nonlinearity. Concretely, zi​=ReLU(a~i​+h~).
+This addition tells us how well that patch fits what the decoder currently needs, and the ReLU “switch” lets the model learn nonlinear matching functions rather than being limited to a simple dot-product.
+Next, we collapse each combined vector down to a single score eiei​ by applying a linear layer with weight vector vv. In code this is
+	e = full_att(z)  # z has shape (batch, 196, attention_dim)
+	e = e.squeeze(2) # now (batch, 196)
+This is equivalent to computing ei=v⊤zi​+b for each region, producing one scalar “energy” per patch.
+We then normalize these raw energies into a probability distribution {αi} via softmax:
+  alfai=(exp(ei))/(suma de j=1 la 196 exp(ej))
+The softmax ensures the αi​ sum to 1, so the highest-scoring patches get the largest attention weights, but every region still contributes something.
+With those attention weights in hand, we build the context vector z^ as the weighted sum of the original encoder features:
+  z^=sum de la i=1 la 196 alfai * ai
+This single vector is a concise summary of the “most relevant” parts of the image for the current decoding step—it compresses complex visual information into one feature.
+Finally, we use and visualize these results. The context vector z^ (often after passing through a small gate) is fed into the LSTM to produce the next hidden state and predict the next word. Meanwhile, we keep the αiαi​ values so we can overlay them as a heatmap on the image, clearly showing which regions the model “looked at” when generating each word.
 
 Decoder:
+Avem o matrice E de dimensiune V x embedded_size. Mai intai il populam normal cu chestii random apoi pe parcurs Unless you freeze the layer (via fine_tune_embeddings(False)), the entries of E are learned end-to-end by backpropagation through your captioning loss. Over time, each row of E becomes the “meaning” vector of its corresponding word, tuned for the image-to-caption task.
+Gather inputs:
+	Eyt−1​ is the embedding of the last generated word (look up index yt−1 in your embedding matrix EE).
+	z^t is the context vector from the attention network (your “nebunia aia de desen”), a weighted sum over the 196 region vectors.
+	(ht−1, ct−1) are the LSTM’s previous hidden state and cell state—i.e. what the decoder “remembers” about the sentence so far and its “memory” buffer.
+We concatenate [E yt−1;  z^t] to form the LSTM cell’s input at time t.
+
+Then we compute the gates:
+    The forget gate ft=σ(Wf[E yt−1;z^t]+Uf ht−1+bf) decides what fraction of the old cell state ct−1 to keep.
+    The input gate it=σ(Wi[E yt−1;z^t]+Ui ht−1+bi) determines how much new information to write into the cell.
+    The input modulator (sometimes called the “cell candidate”) c~t=tanh⁡(Wc[E yt−1;z^t]+Uc ht−1+bc) proposes new memory content based on the same inputs.
+Together, these three gates shape how the cell state is updated.
+
+Update the cell state:
+	ct​=ft​⊙ct−1​+it​⊙c~t​.
+Here the forget gate scales down old memories you no longer need, while the input gate scales up the new candidate content. This lets the LSTM “remember” long-term facts (e.g.\ that the image has a dog) even as it focuses on specific words.
+
+Compute the hidden state (output gate):
+    The output gate ot=σ(Wo[E yt−1;z^t]+Uo ht−1+bo) decides which parts of the updated cell state to expose.
+    Then ht=ot ⊙ tanh⁡(ct).
+This ht​ is both the “memory fingerprint” passed to the next time step and the vector fed through your final linear + softmax to predict yt​.(being the dog)
+
+Initial weights and bias:
+    You initialize all LSTM weight matrices (the WWs and UUs) randomly in a small range (e.g.\ uniform [−0.1,0.1][−0.1,0.1]) so that each gate starts with unique parameters—otherwise they’d receive identical gradients and remain the same.
+    You set all biases bf,bi,bc,bobf​,bi​,bc​,bo​ to zero so there’s no built-in preference for “always remember” or “always forget” at the start.
+    Keeping these initial values small helps avoid vanishing or exploding gradients during backpropagation, letting the network learn balanced gate behaviors from the data
+    
 Avem nebunia aia de desen iar zt este context vector calculat de attention, E yt-1 este cuvantul ales ultimul care este luat din matricea E care e embedded, ct-1 este cell state-ul, adica memoria iar ht-1 este hidden state adica ce tine minte LSTM-ul ca a generat pana acuma). Avem forget gate care decide cat de mult din ct-1 sa pastram, input gate controleaza cata informatie noua sa fie scrisa in cell, input moderator propune un content nou de memoria bazandu-se pe aceleasi inputuri. La initial weights, pune bias la 0 sa nu aiba vreo preferinta pentru un cuvant,trb sa fie initializati random ca sa aiba identitate proprie ca sa invete featurile diferite altfel in timpul la backpropagation ar primii aceiasi gradients si ar sta identici pentru totdeauna si sunt valori mici ca sa evitam exploding/vanishing gradients
 
+Prelucrare date:
 Luam datasetul, il impartim in imagini si captions, il fitram dupa captions daca apar mai mult decat e necesar, sa nu luam cele mai rare cuvinte, apoi facem un index map pentru vocabularul ramas il scriem in fisier apoi. Facem ca fiecare imagine sa contribuie acelesi numar de captions si apoi modificam imaginile sa fie la fel, apoi encodam cuvintele in numere doarece NN inteleg numere nu cuvinte si le facem pana la max length adaugand paduri adica 0
 
 Embedding e ca transforma un vocabular de exemplu <start> dog runs <end> cu indexi 0-3 intr-o matrice de exemplu sa zicem ca are 3 ca si numar de coloane si dog in loc sa ii dau 1 sau "dog" ii dau setul de valori E[1] iar cuvinte care sunt cat de cat asemanatoare o sa aiba acel set de valori mai apropiat.
 
+Antrenare:
+Ce este o epoca?
+An epoch is one complete pass through your entire training dataset. When you train in mini-batches, you break your data into smaller chunks (say, 32 or 64 images at a time). Processing one of those chunks and updating the model’s weights is called an iteration (or a step).
+Once you’ve run through all of those mini-batches—i.e. seen every training example exactly once—that counts as one epoch.
+
+Ce este un mini-batch?
+When you train a neural network, you rarely feed it your entire dataset in one go—that would be slow and memory‐hungry. Instead, you split your training set into many small groups of examples called mini-batches (or just “batches”).
+
+Averagemeter?
+and internally it maintains
+    .val (the most‐recent batch’s value),
+    .sum (the cumulative total of val * n),
+    .count(the cumulative n), and
+    .avg (the running average = sum / count).
+Why you use it: it gives you a stable, epoch‐to‐date view of your key metrics—batch time, data‐loading time, loss per token, and top-5 accuracy—so your training logs show smoothed values rather than wildly fluctuating single‐batch numbers.
+
+Why you use it: decaying the learning rate when progress stalls helps the optimizer take smaller, more precise steps, often unlocking further gains—especially important late in training when you’re trying to squeeze out the last bits of BLEU.
+
+Accuracy:
+which finds the model’s top-5 predicted tokens for each true next-word, counts how often the ground truth is among those five, and reports that percentage.
+Why you use it: BLEU is a sequence‐level metric that you only compute once per epoch (on the entire validation set). Meanwhile, top-5 accuracy is a per-token proxy metric you can cheaply track on‐the-fly to verify that your decoder is learning to place the correct word in its top candidates—even if it doesn’t always pick it first.
+
+Creare fisiere de Train,Validate si Test:
+Let’s walk through a tiny, fully‐numeric example so you can see exactly what each step is doing. Suppose you have 4 images, each with up to 3 human captions, and you choose:
+    caps_per_img = 2
+    min_freq = 1 (so every word that appears at least once stays in the vocab)
+    max_length = 4
+
+And your raw captions look like this:
+Image File	Raw Captions
+img1.jpg	“A cat.”
+“Black cat.”
+“Cat on mat.”
+img2.jpg	“A dog.”
+“Brown dog.”
+img3.jpg	“A bird.”
+“Blue bird.”
+“Bird flies.”
+img4.jpg	“A fish.”
+
+1. Build caption_map and word_freq
+You iterate through each line, tokenize, and count frequencies:
+caption_map = {
+  'img1.jpg': [['a','cat'], ['black','cat'], ['cat','on','mat']],
+  'img2.jpg': [['a','dog'], ['brown','dog']],
+  'img3.jpg': [['a','bird'], ['blue','bird'], ['bird','flies']],
+  'img4.jpg': [['a','fish']],
+}
+word_freq = Counter({
+  'a':4, 'cat':3, 'black':1, 'on':1, 'mat':1,
+  'dog':2, 'brown':1,
+  'bird':3, 'blue':1, 'flies':1,
+  'fish':1
+})
+
+2. Split 80/10/10 by image
+With seed(28) you shuffle
+img_list = ['img1.jpg','img2.jpg','img3.jpg','img4.jpg'] → say it becomes
+['img3.jpg','img1.jpg','img4.jpg','img2.jpg'].
+    train_end = int(0.8*4) = 3
+    val_end = int(0.9*4) = 3 (so val is just the 4th image)
+Resulting split_map:
+Filename	Split
+img3.jpg	train
+img1.jpg	train
+img4.jpg	train
+img2.jpg	test
+(no val because 0.94==3)*	
+(If you want exactly 1 image for val, you’d do 75/10/15 or similar. This small‐N edge case shows why tiny toy datasets need careful ratio choice.)
+
+3. Build your word_map
+Keeping words with freq > min_freq=1 gives ['a','cat','dog','bird'] (since all freq > 1). You enumerate them:
+index_map = {
+  'a':    1,
+  'cat':  2,
+  'dog':  3,
+  'bird': 4,
+  '<pad>':0,
+  '<start>':5,
+  '<end>':6,
+  '<unk>':7,
+}
+
+4. Writing HDF5 & JSON for TRAIN
+For split='train', images ['img3.jpg','img1.jpg','img4.jpg'], captions:
+    img3: [['a','bird'],['blue','bird'],['bird','flies']]
+    img1: [['a','cat'],['black','cat'],['cat','on','mat']]
+    img4: [['a','fish']]
+Because caps_per_img=2, you sample or duplicate:
+    img3: you randomly pick 2 of its 3 captions, say [['a','bird'],['bird','flies']].
+    img1: pick 2 of 3, say [['a','cat'],['black','cat']].
+    img4: only 1 caption so duplicate it → [['a','fish'],['a','fish']].
+You then resize each image to (3,256,256) and store in the HDF5 dataset of shape (3,3,256,256).
+
+5. Encode & pad captions
+For each chosen caption you build:
+    [<start>] + indices + [<end>] + <pad>… up to length max_length=4.
+    Record the true length = len(tokens) + 2.
+Let’s do img3’s two picks:
+    Caption ['a','bird']
+        indices: [1,4]
+        with start/end/pad → [5,1,4,6] (exactly 4 tokens, no pad)
+        length = 2 + 2 = 4
+    Caption ['bird','flies']
+        “flies” isn’t in index_map → <unk> = 7
+        [<start>=5, 4, 7, <end>=6] → [5,4,7,6]
+        length = 2 + 2 = 4
+
+And so on for each image and its 2 sampled captions. You end up with:
+    encoded_caps list of length #images * caps_per_img = 3*2 = 6, each a 4-length list.
+    cap_lengths list of length 6, each value 4.
+
+These two lists get written to JSON files:
+TRAIN_CAPTIONS_*.json  → [[5,1,4,6],[5,4,7,6], … 6 lists total]
+TRAIN_CAPLENS_*.json    → [4,4, … 6 values]
+
+BLEU?
+BLEU (Bilingual Evaluation Understudy) is a precision-based automatic metric for evaluating the quality of generated text (e.g. machine translation, image captions) against one or more reference texts. Although originally developed for translation, it’s widely used in image captioning to compare your model’s captions to ground-truth human captions.
 

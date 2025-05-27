@@ -24,7 +24,7 @@ data_name = 'flickr30k_5_cap_per_img_5_min_word_freq'
 # Network hyperparameters
 embedding_size = 512
 attention_size = 512
-hidden_size = 512
+decoder_size = 512
 dropout_rate = 0.5
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,13 +36,11 @@ total_epochs = 120
 epochs_no_improve = 0
 best_bleu_score = 0.0
 batch_sz = 32
-grad_clip_val = 5.0
-log_interval = 100
-num_workers = 8
+num_workers = 1
 enc_lr = 1e-4
 dec_lr = 4e-4
-# resume_ckpt = None
-resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
+resume_ckpt = None
+#resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
 fine_tune_enc = False
 
 def main():
@@ -63,7 +61,7 @@ def main():
             embedding_dim=embedding_size,
             vocab_size=len(word_to_idx),
             attention_dim=attention_size,
-            decoder_dim=hidden_size,
+            decoder_dim=decoder_size,
             dropout=dropout_rate
         )
         enc_optimizer = optim.Adam(filter(lambda p: p.requires_grad, encoder.parameters()), lr=enc_lr) if fine_tune_enc else None
@@ -91,11 +89,11 @@ def main():
     normalize = transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
     train_loader = data.DataLoader(
         ImageCaptionDataset(data_folder, data_name, 'TRAIN', transforms.Compose([normalize])),
-        batch_size=batch_sz, shuffle=True, num_workers=num_workers, pin_memory=False
+        batch_size=batch_sz, shuffle=True, num_workers=num_workers, pin_memory=True
     )
     val_loader = data.DataLoader(
         ImageCaptionDataset(data_folder, data_name, 'VAL', transforms.Compose([normalize])),
-        batch_size=batch_sz, shuffle=False, num_workers=num_workers, pin_memory=False
+        batch_size=batch_sz, shuffle=False, num_workers=num_workers, pin_memory=True
     )
 
     # Epoch loop
@@ -104,16 +102,12 @@ def main():
             print('No improvement for 20 epochs, stopping.')
             break
         if epochs_no_improve > 0 and epochs_no_improve % 8 == 0:
-            clip_gradient(dec_optimizer, 0.8)
+            AverageMeter.adjust_learning_rate(dec_optimizer, 0.8)
             if fine_tune_enc:
-                clip_gradient(enc_optimizer, 0.8)
+                AverageMeter.adjust_learning_rate(enc_optimizer, 0.8)
 
         # Train one epoch
-        train(
-            train_loader, encoder, decoder,
-            criterion, enc_optimizer, dec_optimizer,
-            epoch, grad_clip_val, log_interval
-        )
+        train(train_loader, encoder, decoder, criterion, enc_optimizer, dec_optimizer, epoch)
 
         # Validate
         current_bleu4 = validate(val_loader, encoder, decoder, criterion)
@@ -131,12 +125,10 @@ def main():
         save_checkpoint(
             data_name, epoch, epochs_no_improve,
             encoder, decoder, enc_optimizer,
-            dec_optimizer, current_bleu4, is_best
+            dec_optimizer, best_bleu_score, is_best
         )
 
-def train(train_data_loader, enc_model, dec_model, loss_fn,
-                    opt_enc=None, opt_dec=None, epoch_idx=0,
-                    print_interval=100, clip_value=None, alpha_c=1.0, device=device):
+def train(train_data_loader, enc_model, dec_model, loss_fn, opt_enc=None, opt_dec=None, epoch_idx=0, print_interval=100, clip_value=5, alpha_c=1.0, device=device):
     """
     Execute one full training epoch.
     """
@@ -161,7 +153,7 @@ def train(train_data_loader, enc_model, dec_model, loss_fn,
 
         # forward pass
         features = enc_model(images)
-        scores, sorted_caps, decode_lens, alphas, sort_idx = dec_model(features, captions, lengths)
+        scores, sorted_caps, decode_lens, alphas, _ = dec_model(features, captions, lengths)
 
         # prepare targets (skip <start>) and pack sequences
         targets = sorted_caps[:, 1:]
@@ -183,11 +175,9 @@ def train(train_data_loader, enc_model, dec_model, loss_fn,
             if opt_enc:
                 clip_gradient(opt_enc, clip_value)
 
-        # parameter updates
         if opt_dec: opt_dec.step()
         if opt_enc: opt_enc.step()
 
-        # metrics
         top5 = AverageMeter.accuracy(packed_scores, packed_targets, 5)
         num_tokens = sum(decode_lens)
         timers['loss'].update(loss.item(), num_tokens)
@@ -196,7 +186,6 @@ def train(train_data_loader, enc_model, dec_model, loss_fn,
 
         start_time = time.time()
 
-        # logging
         if batch_idx % print_interval == 0:
             print(f"Epoch [{epoch_idx}][{batch_idx}/{len(train_data_loader)}] "
                   f"Load {timers['load'].current:.3f} ({timers['load'].average:.3f}) "
@@ -204,8 +193,7 @@ def train(train_data_loader, enc_model, dec_model, loss_fn,
                   f"Loss {timers['loss'].current:.4f} ({timers['loss'].average:.4f}) "
                   f"Top-5 {timers['top5'].current:.3f} ({timers['top5'].average:.3f})")
             
-def validate(valid_data_loader, enc_model, dec_model, loss_fn,
-                             print_interval=100, alpha_c=1.0, device=device):
+def validate(valid_data_loader, enc_model, dec_model, loss_fn,print_interval=100, alpha_c=1.0, device=device):
     """
     Run validation and return BLEU-4 score.
     """
@@ -228,8 +216,7 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,
             lengths = lengths.to(device)
 
             features = enc_model(images)
-            scores, sorted_caps, decode_lens, alphas, sort_idx = \
-                dec_model(features, captions, lengths)
+            scores, sorted_caps, decode_lens, alphas, sort_idx = dec_model(features, captions, lengths)
 
             targets = sorted_caps[:, 1:]
 
