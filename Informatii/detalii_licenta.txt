@@ -225,3 +225,8 @@ TRAIN_CAPLENS_*.json    → [4,4, … 6 values]
 BLEU?
 BLEU (Bilingual Evaluation Understudy) is a precision-based automatic metric for evaluating the quality of generated text (e.g. machine translation, image captions) against one or more reference texts. Although originally developed for translation, it’s widely used in image captioning to compare your model’s captions to ground-truth human captions.
 
+Beam Search
+https://en.wikipedia.org/wiki/Beam_search
+
+
+

@@ -4,21 +4,23 @@ from datasets import *
 from utils import *
 from nltk.translate.bleu_score import corpus_bleu
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 # Parameters
-data_folder = '/home/mihai/workspace/output_data/Flickr30k'
-data_name = 'flickr30k_5_cap_per_img_5_min_word_freq'
-checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
-word_map_file = "/home/mihai/workspace/output_data/Flickr30k/WORDMAP_flickr30k_5_cap_per_img_5_min_word_freq.json"
+# data_folder = '/home/mihai/workspace/output_data/Flickr30k'
+# data_name = 'flickr30k_5_cap_per_img_5_min_word_freq'
+# checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
+# word_map_file = "/home/mihai/workspace/output_data/Flickr30k/WORDMAP_flickr30k_5_cap_per_img_5_min_word_freq.json"
 
-# data_folder = '/home/mihai/workspace/output_data/Flickr8k'
-# data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
-# checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
-# word_map_file = "/home/mihai/workspace/output_data/Flickr8k/WORDMAP_flickr8k_5_cap_per_img_5_min_word_freq.json"
+data_folder = '/home/mihai/workspace/output_data/Flickr8k'
+data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
+checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
+word_map_file = "/home/mihai/workspace/output_data/Flickr8k/WORDMAP_flickr8k_5_cap_per_img_5_min_word_freq.json"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cudnn.benchmark = True
 
@@ -27,7 +29,7 @@ checkpoint = torch.load(checkpoint,map_location=device,weights_only=False)
 decoder = checkpoint['decoder']
 decoder = decoder.to(device)
 decoder.eval()
-encoder = checkpoint['encoder']
+encoder = checkpoint['encoder'].to(device)
 encoder = encoder.to(device)
 encoder.eval()
 
@@ -80,19 +82,13 @@ def evaluate(beam_size):
         while True:
 
             embeddings = decoder.embedding(k_prev_words).squeeze(1)
-
             awe, _ = decoder.attention(encoder_out, h)
-
             gate = decoder.sigmoid(decoder.beta_gate(h))
             awe = gate * awe
-
             h, c = decoder.decode_step(torch.cat([embeddings, awe], dim=1), (h, c))
-
             scores = decoder.fcl(h)
             scores = F.log_softmax(scores, dim=1)
-
             scores = top_k_scores.expand_as(scores) + scores
-
             if step == 1:
                 top_k_scores, top_k_words = scores[0].topk(k, 0, True, True)
             else:
@@ -100,8 +96,6 @@ def evaluate(beam_size):
 
             prev_word_inds = top_k_words // vocab_size
             next_word_inds = top_k_words % vocab_size
-            
-
             seqs = torch.cat([seqs[prev_word_inds], next_word_inds.unsqueeze(1)], dim=1)
             incomplete_inds = [ind for ind, next_word in enumerate(next_word_inds) if
                                next_word != word_map['<end>']]
@@ -125,6 +119,10 @@ def evaluate(beam_size):
                 break
             step += 1
 
+        if len(complete_seqs_scores) == 0:
+            complete_seqs = seqs.tolist()
+            complete_seqs_scores = top_k_scores.squeeze(1).tolist()
+
         i = complete_seqs_scores.index(max(complete_seqs_scores))
         seq = complete_seqs[i]
 
@@ -138,10 +136,40 @@ def evaluate(beam_size):
 
         assert len(references) == len(hypotheses)
 
-    bleu4 = corpus_bleu(references, hypotheses)
-    return bleu4
+    bleu1 = corpus_bleu(references, hypotheses, weights=(1.0, 0, 0, 0))
+    bleu2 = corpus_bleu(references, hypotheses, weights=(0.5, 0.5, 0, 0))
+    bleu3 = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0))
+    bleu4 = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
+    return bleu1, bleu2, bleu3, bleu4
 
+
+
+def plot_bleu_scores(beam_size: int, data_folder: str):
+    bleu1, bleu2, bleu3, bleu4 = evaluate(beam_size)
+
+    bleu_scores = [bleu1*100, bleu2*100, bleu3*100, bleu4*100]
+    labels = ['BLEU-1', 'BLEU-2', 'BLEU-3', 'BLEU-4']
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(labels, bleu_scores)
+
+    for bar, score in zip(bars, bleu_scores):
+        height = bar.get_height()
+        plt.text(
+            bar.get_x() + bar.get_width() / 2,  
+            height + 0.02,                       
+            f"{score:.2f}",                      
+            ha='center',                         
+            va='bottom'                          
+        )
+
+    plt.xlabel('BLEU Metric')
+    plt.ylabel('Score')
+    plt.ylim(0, 100)
+    plt.title(f'BLEU Scores for {os.path.basename(data_folder)}')
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == '__main__':
     beam_size = 1
-    print("\nBLEU-4 score @ beam size of %d is %.4f." % (beam_size, evaluate(beam_size)))
+    plot_bleu_scores(beam_size, data_folder)
