@@ -1,4 +1,3 @@
-import argparse
 import torch
 
 def inspect_checkpoint(path, device='cpu'):

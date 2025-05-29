@@ -44,9 +44,13 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
         if dataset_name == 'flickr30k':
             with open(split_spec, 'r') as f:
                 for line in f:
-                    key, caption = line.strip().split('\t', 1)
-                    img_fn = key.split('#')[0]
-                    tokens = caption.strip().rstrip('.').lower().split()
+                    if not line.strip():
+                        continue  # skip empty lines
+
+                    img_fn, caption = line.strip().split(',', 1)
+                    img_fn = img_fn.strip()
+                    caption = caption.strip()
+                    tokens = caption.rstrip('.').lower().split()
                     word_freq.update(tokens)
                     if tokens and len(tokens) <= max_length:
                         caption_map[img_fn].append(tokens)
