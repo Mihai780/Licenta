@@ -12,11 +12,11 @@ from datasets import ImageCaptionDataset
 from utils import clip_gradient, save_checkpoint, AverageMeter
 from nltk.translate.bleu_score import corpus_bleu
 
-data_folder = '/home/mihai/workspace/output_data/Flickr8k'
-data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
+# data_folder = '/home/mihai/workspace/output_data/Flickr8k'
+# data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
 
-# data_folder = '/home/mihai/workspace/output_data/Flickr30k'
-# data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
+data_folder = '/home/mihai/workspace/output_data/Flickr30k'
+data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
 
 # data_folder = '/home/mihai/workspace/output_data/COCO'
 # data_name = 'coco_5_cap_per_img_5_min_word_freq'  
@@ -40,7 +40,7 @@ num_workers = 1
 enc_lr = 1e-4
 dec_lr = 4e-4
 #resume_ckpt = None
-resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
+resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
 fine_tune_enc = False
 
 def main():

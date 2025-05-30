@@ -9,10 +9,6 @@ import imageio
 from PIL import Image
 from collections import Counter,defaultdict
 
-train_ratio = 0.6
-val_ratio = 0.2
-test_ratio = 0.2
-
 def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_freq, output_dir, max_length=100):
     """
     Prepare HDF5 archives and JSON caption data for training, validation, and testing.
@@ -31,54 +27,79 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
     word_freq = Counter()
 
     caption_map = defaultdict(list)
-    if dataset_name == 'flickr8k':
-        # Read all captions
-        with open(split_spec, 'r') as cfile:
-            for line in cfile:
-                img_fn, caption = line.strip().split(',', 1)
-                tokens = caption.strip().rstrip('.').lower().split()
+    if dataset_name == 'coco':
+        train_ann = os.path.join(split_spec, 'captions_train2017.json')
+        with open(train_ann, 'r') as f:
+            data = json.load(f)
+        images_info = {img['id']: img['file_name'] for img in data['images']}
+        for ann in data['annotations']:
+            fn = images_info[ann['image_id']]
+            tokens = ann['caption'].rstrip('.').lower().split()
+            if tokens and len(tokens) <= max_length:
+                caption_map[('train', fn)].append(tokens)
                 word_freq.update(tokens)
-                if tokens and len(tokens) <= max_length:
-                    caption_map[img_fn].append(tokens)
-    else:
-        if dataset_name == 'flickr30k':
-            with open(split_spec, 'r') as f:
-                for line in f:
-                    if not line.strip():
-                        continue  # skip empty lines
 
+        val_ann = os.path.join(split_spec, 'captions_val2017.json')
+        with open(val_ann, 'r') as f:
+            data = json.load(f)
+        images_info = {img['id']: img['file_name'] for img in data['images']}
+        for ann in data['annotations']:
+            fn = images_info[ann['image_id']]
+            tokens = ann['caption'].rstrip('.').lower().split()
+            if tokens and len(tokens) <= max_length:
+                caption_map[('val', fn)].append(tokens)
+                word_freq.update(tokens)
+
+        for split in ['train', 'val']:
+            subfolder = 'train2017' if split == 'train' else 'val2017'
+            for (_, fn), toks_list in caption_map.items():
+                if _.startswith(split):
+                    toks_list = toks_list[:caps_per_img]
+                    img_path = os.path.join(image_dir, subfolder, fn)
+                    paths[split].append(img_path)
+                    captions[split].append(toks_list)
+
+        paths['test'], captions['test'] = [], []
+
+    else:
+        if dataset_name == 'flickr8k':
+            with open(split_spec, 'r') as cfile:
+                for line in cfile:
                     img_fn, caption = line.strip().split(',', 1)
-                    img_fn = img_fn.strip()
-                    caption = caption.strip()
-                    tokens = caption.rstrip('.').lower().split()
+                    tokens = caption.strip().rstrip('.').lower().split()
                     word_freq.update(tokens)
                     if tokens and len(tokens) <= max_length:
                         caption_map[img_fn].append(tokens)
         else:
-            print(3)
+            with open(split_spec, 'r') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    img_fn, caption = line.strip().split(',', 1)
+                    tokens = caption.rstrip('.').lower().split()
+                    word_freq.update(tokens)
+                    if tokens and len(tokens) <= max_length:
+                        caption_map[img_fn].append(tokens)
+
+        seed(28)
+        img_fns = list(caption_map.keys())
+        shuffle(img_fns)
+        total = len(img_fns)
+        train_end = int(0.8 * total)
+        val_end   = int(0.9 * total)
+        split_map = {fn: ('train' if i < train_end else
+                          'val'   if i < val_end
+                                  else 'test')
+                     for i, fn in enumerate(img_fns)}
+
+        for img_fn, token_lists in caption_map.items():
+            split = split_map[img_fn]
+            img_path = os.path.join(image_dir, img_fn)
+            # aplica caps_per_img
+            token_lists = token_lists[:caps_per_img]
+            paths[split].append(img_path)
+            captions[split].append(token_lists)
     
-    # 3) 80/10/10 reproducible split
-    seed(28)
-    img_fns = list(caption_map.keys())
-    shuffle(img_fns)
-    total = len(img_fns)
-    train_end = int(0.8 * total)
-    val_end = int(0.9 * total)
-
-    split_map = {}
-    for idx, img_fn in enumerate(img_fns):
-        if idx < train_end:
-            split_map[img_fn] = 'train'
-        elif idx < val_end:
-            split_map[img_fn] = 'val'
-        else:
-            split_map[img_fn] = 'test'
-
-    for img_fn, token_lists in caption_map.items():
-        split = split_map[img_fn]
-        img_path = os.path.join(image_dir, img_fn)
-        paths[split].append(img_path)
-        captions[split].append(token_lists)    
 
     # Sanity checks
     for split in ['train', 'val', 'test']:

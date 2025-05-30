@@ -9,7 +9,6 @@ class ImageCaptionDataset(Dataset):
     """
     PyTorch Dataset for loading image-caption pairs from preprocessed HDF5 and JSON files.
     """
-
     def __init__(self, data_folder, data_name, phase, proc_transform=None):
         """
         data_folder: directory containing data files
@@ -54,6 +53,7 @@ class ImageCaptionDataset(Dataset):
         if self.phase == 'TRAIN':
             return img_tensor, cap_seq, cap_len
         else:
+            #Adds all the captions for an image to compare it to a generated caption
             start = img_index * self.caps_per_img
             end = start + self.caps_per_img
             all_caps = torch.LongTensor(self.encoded_caps[start:end])
