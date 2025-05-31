@@ -12,13 +12,13 @@ from datasets import ImageCaptionDataset
 from utils import clip_gradient, save_checkpoint, AverageMeter
 from nltk.translate.bleu_score import corpus_bleu
 
-# data_folder = '/home/mihai/workspace/output_data/Flickr8k'
-# data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
+data_folder = '/home/mihai/workspace/output_data/Flickr8k'
+data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
 
-data_folder = '/home/mihai/workspace/output_data/Flickr30k'
-data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
+# data_folder = '/home/mihai/workspace/output_data/Flickr30k'
+# data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
 
-# data_folder = '/home/mihai/workspace/output_data/COCO'
+# data_folder = '/home/mihai/workspace/output_data/Coco'
 # data_name = 'coco_5_cap_per_img_5_min_word_freq'  
 
 # Network hyperparameters
@@ -39,8 +39,8 @@ batch_sz = 32
 num_workers = 1
 enc_lr = 1e-4
 dec_lr = 4e-4
-#resume_ckpt = None
-resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
+resume_ckpt = None
+#resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
 fine_tune_enc = False
 
 def main():
@@ -144,32 +144,32 @@ def train(train_data_loader, enc_model, dec_model, loss_fn, opt_enc=None, opt_de
 
     start_time = time.time()
     for batch_idx, (images, captions, lengths) in enumerate(train_data_loader):
-        # measure data loading time
+        # Measure data loading time
         timers['load'].update(time.time() - start_time)
 
         images = images.to(device)
         captions = captions.to(device)
         lengths = lengths.to(device)
 
-        # forward pass
+        # Forward pass
         features = enc_model(images)
         scores, sorted_caps, decode_lens, alphas, _ = dec_model(features, captions, lengths)
 
-        # prepare targets (skip <start>) and pack sequences
+        # Prepare targets (skip <start>) and pack sequences
         targets = sorted_caps[:, 1:]
         packed_scores  = pack_padded_sequence(scores,  decode_lens, batch_first=True).data
         packed_targets = pack_padded_sequence(targets, decode_lens, batch_first=True).data
 
-        # compute loss with attention regularization
+        # Compute loss with attention regularization
         loss = loss_fn(packed_scores, packed_targets)
         loss += alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
 
-        # backward pass
+        # Backward pass
         if opt_dec: opt_dec.zero_grad()
         if opt_enc: opt_enc.zero_grad()
         loss.backward()
 
-        # gradient clipping
+        # Gradient clipping
         if clip_value:
             clip_gradient(opt_dec, clip_value)
             if opt_enc:
@@ -220,7 +220,7 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,print_interval=100
 
             targets = sorted_caps[:, 1:]
 
-            # keep a copy for prediction
+            # Keep a copy for prediction
             raw_scores = scores.clone()
 
             packed_scores  = pack_padded_sequence(scores,  decode_lens, batch_first=True).data
@@ -229,7 +229,7 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,print_interval=100
             loss = loss_fn(packed_scores, packed_targets)
             loss += alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
 
-            # update metrics
+            # Update metrics
             top5 = AverageMeter.accuracy(packed_scores, packed_targets, 5)
             num_tokens = sum(decode_lens)
             timers['loss'].update(loss.item(), num_tokens)
@@ -243,7 +243,7 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,print_interval=100
                       f"Loss {timers['loss'].current:.4f} ({timers['loss'].average:.4f}) "
                       f"Top-5 {timers['top5'].current:.3f} ({timers['top5'].average:.3f})")
 
-            # gather references
+            # Gather references
             all_captions = all_captions.to(device)
             sorted_all_caps = all_captions[sort_idx]
             _, pred_idxs = torch.max(raw_scores, dim=2)
@@ -260,7 +260,7 @@ def validate(valid_data_loader, enc_model, dec_model, loss_fn,print_interval=100
                 hyp_tokens = pred_idxs[img_idx, :decode_lens[img_idx]].tolist()
                 hypotheses.append(hyp_tokens)
 
-    # compute BLEU-4
+    # Compute BLEU-4
     bleu4 = corpus_bleu(references, hypotheses)
     print(f"\n * Validation BLEU-4: {bleu4:.4f}, Loss: {timers['loss'].average:.4f}, Top-5: {timers['top5'].average:.4f}\n")
     return bleu4

@@ -28,6 +28,7 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
 
     caption_map = defaultdict(list)
     if dataset_name == 'coco':
+        # Load train annotations
         train_ann = os.path.join(split_spec, 'captions_train2017.json')
         with open(train_ann, 'r') as f:
             data = json.load(f)
@@ -35,10 +36,11 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
         for ann in data['annotations']:
             fn = images_info[ann['image_id']]
             tokens = ann['caption'].rstrip('.').lower().split()
+            word_freq.update(tokens)
             if tokens and len(tokens) <= max_length:
                 caption_map[('train', fn)].append(tokens)
-                word_freq.update(tokens)
 
+        # Load val annotations
         val_ann = os.path.join(split_spec, 'captions_val2017.json')
         with open(val_ann, 'r') as f:
             data = json.load(f)
@@ -46,20 +48,37 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
         for ann in data['annotations']:
             fn = images_info[ann['image_id']]
             tokens = ann['caption'].rstrip('.').lower().split()
+            word_freq.update(tokens)
             if tokens and len(tokens) <= max_length:
                 caption_map[('val', fn)].append(tokens)
-                word_freq.update(tokens)
 
-        for split in ['train', 'val']:
-            subfolder = 'train2017' if split == 'train' else 'val2017'
-            for (_, fn), toks_list in caption_map.items():
-                if _.startswith(split):
-                    toks_list = toks_list[:caps_per_img]
-                    img_path = os.path.join(image_dir, subfolder, fn)
-                    paths[split].append(img_path)
-                    captions[split].append(toks_list)
+        # Populate validation set
+        for fn, toks_list in caption_map.items():
+            if fn[0] == 'val':
+                caps = toks_list[:caps_per_img]
+                img_path = os.path.join(image_dir, 'val2017', fn[1])
+                paths['val'].append(img_path)
+                captions['val'].append(caps)
 
-        paths['test'], captions['test'] = [], []
+        seed(1234)
+        train_fns = [fn for (split, fn) in caption_map if split == 'train']
+        shuffle(train_fns)
+        test_fns = set(train_fns[:5000])
+        train_only_fns = set(train_fns[5000:])
+
+        # Populate test set
+        for fn in test_fns:
+            toks = caption_map[('train', fn)][:caps_per_img]
+            img_path = os.path.join(image_dir, 'train2017', fn)
+            paths['test'].append(img_path)
+            captions['test'].append(toks)
+
+        # Populate train set with the remaining images
+        for fn in train_only_fns:
+            toks = caption_map[('train', fn)][:caps_per_img]
+            img_path = os.path.join(image_dir, 'train2017', fn)
+            paths['train'].append(img_path)
+            captions['train'].append(toks)
 
     else:
         if dataset_name == 'flickr8k':
@@ -87,25 +106,21 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
         total = len(img_fns)
         train_end = int(0.8 * total)
         val_end   = int(0.9 * total)
-        split_map = {fn: ('train' if i < train_end else
-                          'val'   if i < val_end
-                                  else 'test')
-                     for i, fn in enumerate(img_fns)}
+        split_map = {fn: ('train' if i < train_end else 'val'   if i < val_end else 'test') for i, fn in enumerate(img_fns)}
 
         for img_fn, token_lists in caption_map.items():
             split = split_map[img_fn]
             img_path = os.path.join(image_dir, img_fn)
-            # aplica caps_per_img
             token_lists = token_lists[:caps_per_img]
             paths[split].append(img_path)
             captions[split].append(token_lists)
     
 
-    # Sanity checks
+    # Checks
     for split in ['train', 'val', 'test']:
         assert len(paths[split]) == len(captions[split]), f"Mismatch in {split} count"
 
-    # --- 2. Build vocabulary ---
+    # Build vocabulary
     vocab = [w for w, cnt in word_freq.items() if cnt > min_freq]
     index_map = {w: i+1 for i, w in enumerate(vocab)}
     index_map['<pad>'] = 0
@@ -118,7 +133,7 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
     with open(os.path.join(output_dir, f"WORDMAP_{base_tag}.json"), 'w') as wm:
         json.dump(index_map, wm)
 
-    # --- 3. Encode captions and write HDF5/JSON per split ---
+    # Encode captions and write HDF5 and JSON per split
     seed(28)
     for split in ['train', 'val', 'test']:
         split_key = split.upper()
@@ -158,50 +173,10 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
 
             assert len(encoded_caps) == len(cap_lengths) == len(img_list)*caps_per_img
 
-            # write JSON
             with open(os.path.join(output_dir, f"{split_key}_ENCODEDCAPS_{base_tag}.json"), 'w') as cf:
                 json.dump(encoded_caps, cf)
             with open(os.path.join(output_dir, f"{split_key}_CAPLENGTHS_{base_tag}.json"), 'w') as lf:
                 json.dump(cap_lengths, lf)
-
-def random_weights(tensor):
-    """
-    Populate the tensor with values sampled uniformly from [-limit, limit]
-    where limit = sqrt(1 / hidden_size).
-    tensor: torch tensor to initialize
-    """
-    hidden_size = tensor.size(1)
-    limit = np.sqrt(1.0 / hidden_size)
-    with torch.no_grad():
-        tensor.uniform_(-limit, limit)
-
-
-def build_embedding_matrix(embeddings_path, index_map):
-    """
-    Constructs an embedding matrix for tokens in index_map from a GloVe-formatted file.
-
-    embeddings_path: path to GloVe file
-    index_map: mapping from token string to row index in output matrix
-    Returns: (matrix of shape (vocab_size, dim), embedding dimension)
-    """
-    # Determine dimension by inspecting the first line
-    with open(embeddings_path, 'r', encoding='utf-8') as f:
-        embedding_dim = len(f.readline().strip().split())-1
-
-    vocab_size = len(index_map)
-    emb_matrix = torch.FloatTensor(vocab_size, embedding_dim)
-    random_weights(emb_matrix)
-
-    print("Loading pre-trained embeddings...")
-    with open(embeddings_path, 'r', encoding='utf-8') as f:
-        for entry in f:
-            parts = entry.strip().split()
-            token = parts[0]
-            if token in index_map:
-                vec = torch.tensor([float(x) for x in parts[1:]], dtype=torch.float)
-                emb_matrix[index_map[token]] = vec
-
-    return emb_matrix, embedding_dim
 
 
 def save_checkpoint(data_name, current_epoch, epochs_no_improve,encoder, decoder, enc_optimiser, dec_optimiser,bleu4, is_best):

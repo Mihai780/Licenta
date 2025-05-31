@@ -119,29 +119,39 @@ def compare_and_plot():
         '/home/mihai/workspace/output_data/Flickr30k/WORDMAP_flickr30k_5_cap_per_img_5_min_word_freq.json',
         beam_size=1
     )
+    coco = evaluate_dataset(
+        '/home/mihai/workspace/output_data/Coco',
+        'coco_5_cap_per_img_5_min_word_freq',
+        '/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar',
+        '/home/mihai/workspace/output_data/Coco/WORDMAP_coco_5_cap_per_img_5_min_word_freq.json',
+        beam_size=1
+    )
 
-    labels = ['BLEU-1','BLEU-2','BLEU-3','BLEU-4']
-    x = range(len(labels))
-    width = 0.35
+    labels = ['BLEU-1', 'BLEU-2', 'BLEU-3', 'BLEU-4']
+    x = list(range(len(labels)))
+    width = 0.25
 
-    plt.figure(figsize=(10,6))
-    plt.bar([i-width/2 for i in x], flickr8k, width, label='Flickr8k')
-    plt.bar([i+width/2 for i in x], flickr30k, width, label='Flickr30k')
+    plt.figure(figsize=(10, 6))
+    plt.bar([i - width for i in x], flickr8k,  width, label='Flickr8k')
+    plt.bar(x,                   flickr30k, width, label='Flickr30k')
+    plt.bar([i + width for i in x], coco,     width, label='MS COCO')
 
+    # Annotate each bar with its value
     for i, v in enumerate(flickr8k):
-        plt.text(i-width/2, v+1, f"{v:.1f}", ha='center')
+        plt.text(i - width, v + 1, f"{v:.1f}", ha='center', va='bottom')
     for i, v in enumerate(flickr30k):
-        plt.text(i+width/2, v+1, f"{v:.1f}", ha='center')
+        plt.text(i, v + 1, f"{v:.1f}", ha='center', va='bottom')
+    for i, v in enumerate(coco):
+        plt.text(i + width, v + 1, f"{v:.1f}", ha='center', va='bottom')
 
     plt.xticks(x, labels)
-    plt.ylim(0,100)
+    plt.ylim(0, 100)
     plt.xlabel('BLEU Metric')
     plt.ylabel('Score (%)')
-    plt.title('BLEU Comparison: Flickr8k vs Flickr30k of beam size 1')
+    plt.title('BLEU Comparison at beam size 1: Flickr8k vs Flickr30k vs MS COCO')
     plt.legend()
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == '__main__':
     compare_and_plot()

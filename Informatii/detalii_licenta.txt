@@ -230,3 +230,6 @@ https://en.wikipedia.org/wiki/Beam_search
 
 
 
+Această funcție train realizează un întreg epoch de învăţare pentru modelul tău de image captioning, parcurgând batch-urile de imagini şi caption-uri, făcând forward pass prin encoder şi decoder, calculând loss-ul de cross-entropy plus penalizarea atenţiei (pentru a încuraja acoperirea completă a imaginii), apoi aplicând backward pass cu gradient clipping şi actualizând parametrii ambelor reţele (encoder şi decoder) prin optimizatori. În paralel, ea măsoară timpii de încărcare şi de procesare, loss-ul curent şi mediu, precum şi acurateţea top-5, şi tipăreşte la intervale regulate starea curentă şi statisticile medii pentru a monitoriza progresul antrenării.
+
+Funcția validate parcurge setul de validare pas cu pas, trece imaginile prin encoder și decoder pentru a obține scoruri pe vocabular, calculează loss-ul (inclusiv regularizarea atenției), măsoară acuratețea top-5 și timpii de procesare, iar în paralel construiește două liste: references (toate caption-urile umane de referință, filtrate de token-urile <start> și <pad>) și hypotheses (caption-urile generate de model, tăiate la lungimile reale). La final, folosește aceste liste pentru a calcula și afișa scorul BLEU-4, apoi returnează acest BLEU-4 pentru comparație între epoci sau configurări de model.
