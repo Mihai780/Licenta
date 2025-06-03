@@ -105,20 +105,20 @@ def evaluate_dataset(data_folder, data_name, checkpoint_path, word_map_file, bea
     return [b*100 for b in (bleu1, bleu2, bleu3, bleu4)]
 
 def compare_and_plot():
-    flickr8k = evaluate_dataset(
-        '/home/mihai/workspace/output_data/Flickr8k',
-        'flickr8k_5_cap_per_img_5_min_word_freq',
-        '/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar',
-        '/home/mihai/workspace/output_data/Flickr8k/WORDMAP_flickr8k_5_cap_per_img_5_min_word_freq.json',
-        beam_size=1
-    )
-    flickr30k = evaluate_dataset(
-        '/home/mihai/workspace/output_data/Flickr30k',
-        'flickr30k_5_cap_per_img_5_min_word_freq',
-        '/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar',
-        '/home/mihai/workspace/output_data/Flickr30k/WORDMAP_flickr30k_5_cap_per_img_5_min_word_freq.json',
-        beam_size=1
-    )
+    # flickr8k = evaluate_dataset(
+    #     '/home/mihai/workspace/output_data/Flickr8k',
+    #     'flickr8k_5_cap_per_img_5_min_word_freq',
+    #     '/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar',
+    #     '/home/mihai/workspace/output_data/Flickr8k/WORDMAP_flickr8k_5_cap_per_img_5_min_word_freq.json',
+    #     beam_size=1
+    # )
+    # flickr30k = evaluate_dataset(
+    #     '/home/mihai/workspace/output_data/Flickr30k',
+    #     'flickr30k_5_cap_per_img_5_min_word_freq',
+    #     '/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar',
+    #     '/home/mihai/workspace/output_data/Flickr30k/WORDMAP_flickr30k_5_cap_per_img_5_min_word_freq.json',
+    #     beam_size=1
+    # )
     coco = evaluate_dataset(
         '/home/mihai/workspace/output_data/Coco',
         'coco_5_cap_per_img_5_min_word_freq',
@@ -132,15 +132,15 @@ def compare_and_plot():
     width = 0.25
 
     plt.figure(figsize=(10, 6))
-    plt.bar([i - width for i in x], flickr8k,  width, label='Flickr8k')
-    plt.bar(x,                   flickr30k, width, label='Flickr30k')
+    #plt.bar([i - width for i in x], flickr8k,  width, label='Flickr8k')
+    # plt.bar(x,                   flickr30k, width, label='Flickr30k')
     plt.bar([i + width for i in x], coco,     width, label='MS COCO')
 
     # Annotate each bar with its value
-    for i, v in enumerate(flickr8k):
-        plt.text(i - width, v + 1, f"{v:.1f}", ha='center', va='bottom')
-    for i, v in enumerate(flickr30k):
-        plt.text(i, v + 1, f"{v:.1f}", ha='center', va='bottom')
+    # for i, v in enumerate(flickr8k):
+    #     plt.text(i - width, v + 1, f"{v:.1f}", ha='center', va='bottom')
+    # for i, v in enumerate(flickr30k):
+    #     plt.text(i, v + 1, f"{v:.1f}", ha='center', va='bottom')
     for i, v in enumerate(coco):
         plt.text(i + width, v + 1, f"{v:.1f}", ha='center', va='bottom')
 

@@ -23,7 +23,7 @@ def inspect_checkpoint(path, device='cpu'):
 if __name__ == "__main__":
 
     #checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
-    checkpoint = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr8k_5_cap_per_img_5_min_word_freq.pth.tar"
+    checkpoint = "/home/mihai/workspace/output_data/Checkpoints/BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar"
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     inspect_checkpoint(checkpoint, device)
