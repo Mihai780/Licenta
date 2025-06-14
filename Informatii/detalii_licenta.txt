@@ -1,35 +1,4 @@
-Image captioning doesn’t just require recognizing individual objects — it requires understanding the relationships between them and the ability to compress a complex visual scene into a concise, descriptive sentence.
-
-Encoder (CNN)
-We use a VGG network (e.g. VGG-16 or VGG-19) up through its last convolutional layer, before any fully-connected layers. That convolutional output is a tensor of shape 512 × 14 × 14 (i.e. 512 feature maps, each 14×14). We treat each of the 14×14 = 196 spatial locations as an individual “annotation vector” of length 512.
-
-Why not use the fully-connected layers?
-Fully-connected (dense) layers sit at the very end of VGG. Each neuron there sees every activation from the previous layer and learns global combinations of features. If you squash all spatial information into one 4,096-dimensional (or 1,000-dimensional) vector, you lose where things appeared in the image. That hurts captioning, because “where” is often just as important as “what.” By dropping the FC layers, we preserve the full spatial feature map so our attention module can later choose which regions to focus on.
-
-Attention
-Think of attention as a moving spotlight over the image: at each word-generation step, the model assigns a score to each of the 196 locations, normalizes them with a softmax, and produces a weighted sum of the 512-dim vectors. This soft (deterministic) attention is easy to train end-to-end: you get a smooth probability distribution over all locations. There’s also a hard (stochastic) variant, where you sample a single location at each step (more like a human saccade), but that requires REINFORCE or another policy-gradient method and is trickier to optimize.
-
-Decoder (LSTM)
-At each time step, the LSTM takes three inputs:
-
-    The embedding of the previously generated word
-
-    Its previous hidden state
-
-    The attention-based context vector
-
-It then updates its cell and hidden states and outputs a probability distribution over the next word.
-
 Visualization of Attention
-During inference you can overlay the attention weights as a heatmap on the image—for each generated word, you see exactly where the model was “looking.” This visualization wouldn’t be possible if we’d collapsed everything into a single vector.
-
-Encoded Captions (Vocabulary Mapping)
-We build a vocabulary of all words in the dataset, sorted by frequency. Each word gets assigned a unique integer ID (token). This lets the decoder emit a sequence of IDs, which we then map back to words to form the final caption.
-
-
-Encoder:
-We chose EfficientNet-B4 as our encoder backbone because its pretrained filters capture rich, general visual patterns that “Show, Attend and Tell” relies on, then removed its classifier and global pool to expose spatial feature maps rather than class scores; by adaptively pooling to a 14×14 grid we mirror the paper’s 14×14 annotation vectors, ensuring a consistent number of attention “locations” regardless of input size, and by freezing all but the last three convolutional blocks we retain the low‐level, broadly useful features learned on ImageNet while still allowing the higher, more semantic layers to fine‐tune on our captioning task—exactly the balance of stability and adaptability the paper advocates for effective soft‐attention performance.
-We use a pretrained EfficientNet-B4 backbone (via timm.create_model('efficientnet_b4', pretrained=True)) with its final classifier and original pooling layers removed, leaving a convolutional trunk that outputs a tensor of shape (B, C, H′, W′) where C = effnet.num_features (1792 for B4); we then apply an AdaptiveAvgPool2d((14,14)) to produce a fixed 14×14 spatial grid, permute the result to (B, 14, 14, C), and reshape to (B, 196, C) so that each of the 196 vectors serves as an annotation for the decoder’s soft‐attention LSTM (as in “Show, Attend and Tell”); by default all backbone parameters are frozen (requires_grad=False), but calling finetune(True) unfreezes the last three convolutional blocks—locking in the well‐learned low‐level features while allowing higher‐level, more task‐specific features to adapt during training.
 
 Attention model:
 At each decoding step, we start with the encoder outputs, a set of 196 region vectors (one for each 14×14 spatial location) and the decoder’s previous hidden state. We need to score each region i by measuring how well it “fits” with what the decoder already knows.
@@ -42,21 +11,8 @@ In code, that’s
 	att1 = encoder_att(encoder_out)        # (batch, 196, attention_dim)
 	att2 = decoder_att(decoder_hidden)     # (batch, attention_dim)
 By bringing them into the same space, we can directly compare a region ai​ with the decoder state ht−1.
-Our  whinitial hidden state and cell state is the average of all L annotations  which are then fed thorugh two separate MLP.
 The LSTM’s cell state ct​ is essentially the network’s “memory”—the part that can carry information forward over many time steps without it being immediately squashed by nonlinearities. It works together with the hidden state ht to control what information gets stored, forgotten, or exposed to the next layer.
-Why have a separate cell state?
-Unlike a vanilla RNN, an LSTM has explicit mechanisms (input, forget, and output gates) that decide:
- What new information to add to the memory (via the input gate),
- What old information to forget (via the forget gate), and
- What part of the memory to expose as the hidden state (via the output gate).
-This structure helps the network learn long-range dependencies without suffering from vanishing or exploding gradients.
-What is the initial cell state c0?
-It’s simply the LSTM’s memory at time step 0, before any words have been generated. By initializing c0 based on the image (just like h0), you give the decoder a memory buffer that already “knows” the global content of the scene.
-Purpose in image captioning
- Global context: c0 carries a distilled summary of the entire image into the decoder.
- Long-term planning: As the LSTM generates a caption word by word, ct lets it remember high-level concepts (e.g., “there’s a dog,” “it’s on a beach”) even as it focuses attention on local regions for specific words.
- Stable generation: Without a good initial c0​, the decoder would have to build its memory entirely from the first few words it generates, rather than from the visual evidence.
-        
+
 For each region i, we first measure compatibility by adding its projected vector a~i to the projected hidden state h~ and applying a ReLU nonlinearity. Concretely, zi​=ReLU(a~i​+h~).
 This addition tells us how well that patch fits what the decoder currently needs, and the ReLU “switch” lets the model learn nonlinear matching functions rather than being limited to a simple dot-product.
 Next, we collapse each combined vector down to a single score eiei​ by applying a linear layer with weight vector vv. In code this is
@@ -72,27 +28,6 @@ This single vector is a concise summary of the “most relevant” parts of the 
 Finally, we use and visualize these results. The context vector z^ (often after passing through a small gate) is fed into the LSTM to produce the next hidden state and predict the next word. Meanwhile, we keep the αiαi​ values so we can overlay them as a heatmap on the image, clearly showing which regions the model “looked at” when generating each word.
 
 Decoder:
-Avem o matrice E de dimensiune V x embedded_size. Mai intai il populam normal cu chestii random apoi pe parcurs Unless you freeze the layer (via fine_tune_embeddings(False)), the entries of E are learned end-to-end by backpropagation through your captioning loss. Over time, each row of E becomes the “meaning” vector of its corresponding word, tuned for the image-to-caption task.
-Gather inputs:
-	Eyt−1​ is the embedding of the last generated word (look up index yt−1 in your embedding matrix EE).
-	z^t is the context vector from the attention network (your “nebunia aia de desen”), a weighted sum over the 196 region vectors.
-	(ht−1, ct−1) are the LSTM’s previous hidden state and cell state—i.e. what the decoder “remembers” about the sentence so far and its “memory” buffer.
-We concatenate [E yt−1;  z^t] to form the LSTM cell’s input at time t.
-
-Then we compute the gates:
-    The forget gate ft=σ(Wf[E yt−1;z^t]+Uf ht−1+bf) decides what fraction of the old cell state ct−1 to keep.
-    The input gate it=σ(Wi[E yt−1;z^t]+Ui ht−1+bi) determines how much new information to write into the cell.
-    The input modulator (sometimes called the “cell candidate”) c~t=tanh⁡(Wc[E yt−1;z^t]+Uc ht−1+bc) proposes new memory content based on the same inputs.
-Together, these three gates shape how the cell state is updated.
-
-Update the cell state:
-	ct​=ft​⊙ct−1​+it​⊙c~t​.
-Here the forget gate scales down old memories you no longer need, while the input gate scales up the new candidate content. This lets the LSTM “remember” long-term facts (e.g.\ that the image has a dog) even as it focuses on specific words.
-
-Compute the hidden state (output gate):
-    The output gate ot=σ(Wo[E yt−1;z^t]+Uo ht−1+bo) decides which parts of the updated cell state to expose.
-    Then ht=ot ⊙ tanh⁡(ct).
-This ht​ is both the “memory fingerprint” passed to the next time step and the vector fed through your final linear + softmax to predict yt​.(being the dog)
 
 Initial weights and bias:
     You initialize all LSTM weight matrices (the WWs and UUs) randomly in a small range (e.g.\ uniform [−0.1,0.1][−0.1,0.1]) so that each gate starts with unique parameters—otherwise they’d receive identical gradients and remain the same.
@@ -100,11 +35,6 @@ Initial weights and bias:
     Keeping these initial values small helps avoid vanishing or exploding gradients during backpropagation, letting the network learn balanced gate behaviors from the data
     
 Avem nebunia aia de desen iar zt este context vector calculat de attention, E yt-1 este cuvantul ales ultimul care este luat din matricea E care e embedded, ct-1 este cell state-ul, adica memoria iar ht-1 este hidden state adica ce tine minte LSTM-ul ca a generat pana acuma). Avem forget gate care decide cat de mult din ct-1 sa pastram, input gate controleaza cata informatie noua sa fie scrisa in cell, input moderator propune un content nou de memoria bazandu-se pe aceleasi inputuri. La initial weights, pune bias la 0 sa nu aiba vreo preferinta pentru un cuvant,trb sa fie initializati random ca sa aiba identitate proprie ca sa invete featurile diferite altfel in timpul la backpropagation ar primii aceiasi gradients si ar sta identici pentru totdeauna si sunt valori mici ca sa evitam exploding/vanishing gradients
-
-Prelucrare date:
-Luam datasetul, il impartim in imagini si captions, il fitram dupa captions daca apar mai mult decat e necesar, sa nu luam cele mai rare cuvinte, apoi facem un index map pentru vocabularul ramas il scriem in fisier apoi. Facem ca fiecare imagine sa contribuie acelesi numar de captions si apoi modificam imaginile sa fie la fel, apoi encodam cuvintele in numere doarece NN inteleg numere nu cuvinte si le facem pana la max length adaugand paduri adica 0
-
-Embedding e ca transforma un vocabular de exemplu <start> dog runs <end> cu indexi 0-3 intr-o matrice de exemplu sa zicem ca are 3 ca si numar de coloane si dog in loc sa ii dau 1 sau "dog" ii dau setul de valori E[1] iar cuvinte care sunt cat de cat asemanatoare o sa aiba acel set de valori mai apropiat.
 
 Antrenare:
 Ce este o epoca?

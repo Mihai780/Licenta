@@ -15,11 +15,11 @@ from nltk.translate.bleu_score import corpus_bleu
 # data_folder = '/home/mihai/workspace/output_data/Flickr8k'
 # data_name = 'flickr8k_5_cap_per_img_5_min_word_freq'
 
-# data_folder = '/home/mihai/workspace/output_data/Flickr30k'
-# data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
+data_folder = '/home/mihai/workspace/output_data/Flickr30k'
+data_name = 'flickr30k_5_cap_per_img_5_min_word_freq' 
 
-data_folder = '/home/mihai/workspace/output_data/Coco'
-data_name = 'coco_5_cap_per_img_5_min_word_freq'  
+# data_folder = '/home/mihai/workspace/output_data/Coco'
+# data_name = 'coco_5_cap_per_img_5_min_word_freq'  
 
 # Network hyperparameters
 embedding_size = 512
@@ -35,13 +35,19 @@ initial_epoch = 0
 total_epochs = 120
 epochs_no_improve = 0
 best_bleu_score = 0.0
-batch_sz = 64
+batch_sz = 4
 num_workers = 1
-enc_lr = 1e-4
+
+# enc_lr = 1e-4
+# dec_lr = 4e-4
+# We use a smaller LR now because it is fine-tuned
+enc_lr = 1e-5
 dec_lr = 4e-4
-#resume_ckpt = None
-resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar"
-fine_tune_enc = False
+
+resume_ckpt = None
+resume_ckpt = "/home/mihai/workspace/output_data/Checkpoints/checkpoint_flickr30k_5_cap_per_img_5_min_word_freq.pth.tar"
+# fine_tune_enc = False
+fine_tune_enc= True
 
 def main():
     """

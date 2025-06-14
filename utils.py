@@ -143,7 +143,7 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
         h5_path = os.path.join(output_dir, f"{split_key}_IMAGES_{base_tag}.h5")
         with h5py.File(h5_path, 'w') as h5f:
             h5f.attrs['captions_per_image'] = caps_per_img
-            ds = h5f.create_dataset('images', (len(img_list), 3, 256, 256), dtype='uint8')
+            ds = h5f.create_dataset('images', (len(img_list), 3, 380, 380), dtype='uint8')
 
             encoded_caps = []
             cap_lengths = []
@@ -160,7 +160,7 @@ def preprocess_dataset(dataset_name, split_spec, image_dir, caps_per_img, min_fr
                 img_array = imageio.imread(img_file)
                 if img_array.ndim == 2:
                     img_array = np.stack([img_array]*3, axis=2)
-                pil_img = Image.fromarray(img_array).resize((256, 256), Image.BILINEAR)
+                pil_img = Image.fromarray(img_array).resize((380, 380), Image.BILINEAR)
                 arr = np.array(pil_img).transpose(2, 0, 1).astype('uint8')
                 ds[idx] = arr
 
@@ -185,7 +185,7 @@ def save_checkpoint(data_name, current_epoch, epochs_no_improve,encoder, decoder
     so we can resume later or roll back to our best-performing model.
     """
     # Target directory
-    ckpt_dir = "/home/mihai/workspace/output_data/Checkpoints/"
+    ckpt_dir = '/home/mihai/workspace/output_data/Checkpoints'
     os.makedirs(ckpt_dir, exist_ok=True)
 
     # Assemble checkpoint dictionary

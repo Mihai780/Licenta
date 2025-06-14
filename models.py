@@ -21,13 +21,18 @@ class Encoder(nn.Module):
         return out
 
     def fine_tune(self, trainable=True):
-        for param in self.effnet.parameters():
-            param.requires_grad = False
+        #partial fine-tune
+        # for param in self.effnet.parameters():
+        #     param.requires_grad = False
 
-        last_blocks = list(self.effnet.children())[-3:]
-        for block in last_blocks:
-            for param in block.parameters():
-                param.requires_grad = trainable
+        # last_blocks = list(self.effnet.children())[-3:]
+        # for block in last_blocks:
+        #     for param in block.parameters():
+        #         param.requires_grad = trainable
+
+        #full fine-tune
+        for param in self.effnet.parameters():
+            param.requires_grad = trainable
 
 class Attention(nn.Module):
     """ Attention Network. """
@@ -141,4 +146,3 @@ class DecoderWithAttention(nn.Module):
             attn_weights[:batch_size_t, t, :] = weight
 
         return output_scores, encoded_captions, decode_lengths, attn_weights, sort_indeces
-
